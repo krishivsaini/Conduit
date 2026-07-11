@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  MCP-style evaluation (§12) — ≥10 realistic, verifiable, read-only questions
+  the assistant answers by using the server's tools against sample-repo/.
+
+  Each question must be: independent, read-only, complex (multiple tool calls),
+  realistic, verifiable (single checkable answer), and stable.
+
+  Authored and run on Day 12; results recorded from a real run (no placeholders).
+-->
+<evaluation>
+  <!-- Example shape (to be replaced with ≥10 real qa_pairs on Day 12):
+  <qa_pair>
+    <question>Which file defines the function that authenticates a user, and what value does it return on failure?</question>
+    <answer>src/auth.py; it returns None</answer>
+  </qa_pair>
+  -->
+</evaluation>

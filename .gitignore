@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtualenv (uv.lock IS committed for reproducibility; the venv is not)
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Env / secrets — never commit REAL ones
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.log
+
+# Ollama
+.ollama/
+
+# OS
+.DS_Store
+
+# ---------------------------------------------------------------------------
+# Deny-list demo fixtures.
+# These are INTENTIONAL, obviously-fake secrets committed on purpose so the
+# server's security deny-list can be shown refusing them live (§8). The
+# negations below re-include them despite the secret patterns above.
+# ---------------------------------------------------------------------------
+!sample-repo/.env
+!sample-repo/service.key
+!sample-repo/*.pem
