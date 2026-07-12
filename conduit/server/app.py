@@ -46,11 +46,17 @@ def build_server(config: ServerConfig) -> FastMCP:
     mcp = FastMCP("conduit_mcp")
 
     # --- Registration wired in over Days 2-6 (see module docstring) ---
-    # from .tools import read_file, search_code, list_symbols, diff
-    # from .resources import repo_tree
-    # read_file.register(mcp, config)
-    # ...
+    from .tools import read_file
 
+    read_file.register(mcp, config)
+
+    # Day 5-6: search_code, list_symbols, diff, repo_tree
+
+    # Read-only posture (§8.3): refuse to start if any non-read-only tool was
+    # registered. This is enforcement, not decoration.
+    from .security.readonly import enforce_readonly
+
+    enforce_readonly(mcp)
     return mcp
 
 
