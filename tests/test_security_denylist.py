@@ -86,11 +86,35 @@ async def test_read_file_still_serves_ordinary_files(sample_repo):
 # --- Turn on once the tools exist (Days 5-6), re-using the same deny-list ---
 
 
-@pytest.mark.skip(reason="Day 5: assert denied files absent from search_code results")
-def test_denied_file_not_in_search_results(sample_repo):
-    ...
+async def test_denied_file_not_in_search_results(sample_repo):
+    """A secret that really exists in the (denied) .env must not be searchable."""
+    # Sanity: the token IS present on disk, so a 0-result proves exclusion,
+    # not mere absence.
+    assert "PAYMENT_PROVIDER_KEY" in (sample_repo / ".env").read_text()
+
+    mcp = build_server(load_config(str(sample_repo)))
+    _content, structured = await mcp.call_tool("search_code", {"query": "PAYMENT_PROVIDER_KEY"})
+    assert structured["total_matches"] == 0
 
 
-@pytest.mark.skip(reason="Day 6: assert denied files absent from the repo_tree resource")
-def test_denied_files_absent_from_repo_tree(sample_repo):
-    ...
+async def test_denied_files_absent_from_repo_tree(sample_repo):
+    """The repo_tree resource must exclude deny-listed files but keep real ones."""
+    import json
+
+    mcp = build_server(load_config(str(sample_repo)))
+    contents = await mcp.read_resource("repo://tree")
+    tree = json.loads(contents[0].content)
+
+    names: set[str] = set()
+
+    def collect(node: dict) -> None:
+        names.add(node["name"])
+        for child in node.get("children", []):
+            collect(child)
+
+    collect(tree)
+
+    assert ".env" not in names
+    assert "service.key" not in names
+    # sanity: ordinary files still appear
+    assert "auth.py" in names

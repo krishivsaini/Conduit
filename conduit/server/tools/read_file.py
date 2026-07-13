@@ -17,12 +17,11 @@ from typing import Annotated
 from pydantic import BaseModel, Field
 
 from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
+from ..access import read_text_file
 from ..app import ServerConfig
-from ..security.boundary import PathOutsideRootError, resolve_within_root
-from ..security.denylist import is_denied
+from ..errors import ActionableError, to_tool_error
 
 # Bounded output: cap a single read so one call can't dump an enormous file
 # into the model's context (a mild abuse boundary — §8.4).
@@ -80,62 +79,36 @@ def register(mcp: FastMCP, config: ServerConfig) -> None:
             returned, the file's total line count, a truncated flag, and the
             selected content.
         """
+        # One error exit: security (confine → deny-list) and range validation
+        # both raise ActionableError, converted to a clean MCP ToolError.
         try:
-            target = resolve_within_root(repo_root, path)
-        except PathOutsideRootError as e:
-            # FastMCP already prefixes "Error executing tool read_file:", so
-            # surface just the actionable body, no extra "Error:".
-            raise ToolError(e.actionable())
+            _target, lines = read_text_file(repo_root, path)
 
-        # Deny-list: checked on the RESOLVED path (so a symlink pointing at a
-        # secret is caught too), and before any existence check so the message
-        # never reveals whether the secret exists.
-        relative = target.relative_to(repo_root.resolve())
-        if is_denied(str(relative)):
-            raise ToolError(
-                f"path '{path}' is excluded by the server's secrets deny-list "
-                f"and cannot be read."
-            )
+            total = len(lines)
+            if total == 0:
+                return ReadFileResult(
+                    path=path, start_line=0, end_line=0, total_lines=0, truncated=False, content=""
+                )
 
-        if not target.exists():
-            raise ToolError(
-                f"file '{path}' does not exist. Check the path relative to the repo root."
-            )
-        if not target.is_file():
-            raise ToolError(
-                f"'{path}' is not a file. Provide a path to a file, not a directory."
-            )
-        try:
-            text = target.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            raise ToolError(
-                f"'{path}' is not a UTF-8 text file. read_file serves text files only."
-            )
+            start = start_line or 1
+            end = end_line or total
+            if start > total:
+                raise ActionableError(
+                    f"start_line {start} exceeds the file length ({total} lines). "
+                    f"Provide start_line <= {total}."
+                )
+            if end < start:
+                raise ActionableError(
+                    f"end_line {end} is before start_line {start}. Provide end_line >= start_line."
+                )
+            end = min(end, total)
 
-        lines = text.splitlines()
-        total = len(lines)
-        if total == 0:
-            return ReadFileResult(
-                path=path, start_line=0, end_line=0, total_lines=0, truncated=False, content=""
-            )
-
-        start = start_line or 1
-        end = end_line or total
-        if start > total:
-            raise ToolError(
-                f"start_line {start} exceeds the file length ({total} lines). "
-                f"Provide start_line <= {total}."
-            )
-        if end < start:
-            raise ToolError(
-                f"end_line {end} is before start_line {start}. Provide end_line >= start_line."
-            )
-        end = min(end, total)
-
-        truncated = False
-        if end - start + 1 > MAX_LINES:
-            end = start + MAX_LINES - 1
-            truncated = True
+            truncated = False
+            if end - start + 1 > MAX_LINES:
+                end = start + MAX_LINES - 1
+                truncated = True
+        except ActionableError as e:
+            raise to_tool_error(e)
 
         return ReadFileResult(
             path=path,
