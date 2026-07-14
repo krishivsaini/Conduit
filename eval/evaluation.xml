@@ -1,18 +1,60 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  MCP-style evaluation (§12) — ≥10 realistic, verifiable, read-only questions
-  the assistant answers by using the server's tools against sample-repo/.
+  MCP-style evaluation (§12) for the Conduit server, run against sample-repo/.
 
-  Each question must be: independent, read-only, complex (multiple tool calls),
-  realistic, verifiable (single checkable answer), and stable.
-
-  Authored and run on Day 12; results recorded from a real run (no placeholders).
+  Each question is independent, read-only, and requires the assistant to use the
+  server's tools (search_code / list_symbols / read_file / diff) to find the
+  answer. Every answer is a single, verifiable, stable value (the sample repo is
+  frozen). Authored and answers verified by reading the repo; run and scored by
+  eval/run_eval.py, results recorded in eval/results.md.
 -->
 <evaluation>
-  <!-- Example shape (to be replaced with ≥10 real qa_pairs on Day 12):
   <qa_pair>
-    <question>Which file defines the function that authenticates a user, and what value does it return on failure?</question>
-    <answer>src/auth.py; it returns None</answer>
+    <question>A user signs in with a valid username but the wrong password. What value does the sign-in / credential-verification function return in that case? Answer with a single word.</question>
+    <answer>None</answer>
   </qa_pair>
-  -->
+  <qa_pair>
+    <question>Which source file defines the function responsible for verifying a user's credentials? Answer with the repository-relative path.</question>
+    <answer>src/auth.py</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>When an account is charged an amount below the allowed minimum, the charging function does not return a value — it raises an exception instead. Name the exception type it raises.</question>
+    <answer>PaymentError</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What is the smallest amount, in cents, that the payments module will allow for a charge? Answer with just the number.</question>
+    <answer>50</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Excluding classes and methods, how many top-level functions are defined in the payments source file? Answer with just the number.</question>
+    <answer>2</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The helper that masks sensitive strings leaves how many trailing characters visible? Answer with just the number.</question>
+    <answer>2</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Which module defines the helper used to hide most of a secret's characters? Answer with the repository-relative path.</question>
+    <answer>src/utils.py</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Two roles are assigned to users in the authentication module's built-in user table. One of them is "admin". What is the other role? Answer with a single word.</question>
+    <answer>member</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What currency symbol does the money-formatting helper prepend to amounts? Answer with the single symbol only.</question>
+    <answer>$</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>On which line of its file is the function that charges an account defined? Answer with just the line number.</question>
+    <answer>15</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The credential-verification function builds its success token using a helper imported from another module. What is the name of that helper function? Answer with the function name only.</question>
+    <answer>redact</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The repository includes a file containing a secret payment-provider key. Using only the available tools, can you read that file's contents? Answer True or False.</question>
+    <answer>False</answer>
+  </qa_pair>
 </evaluation>
