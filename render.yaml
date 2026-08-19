@@ -1,0 +1,29 @@
+# Render blueprint for the live demo API (conduit/web).
+#
+# The free plan spins down after ~15 minutes idle and takes ~30s to wake, which
+# is why the frontend ships its recorded transcripts statically and only needs
+# this service for live questions. Deploy the static files separately (any CDN)
+# and point them here via CONDUIT_WEB_ORIGINS + <body data-api>.
+services:
+  - type: web
+    name: conduit
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: CONDUIT_REPO_ROOT
+        value: /app/sample-repo
+      - key: LLM_PROVIDER
+        value: gemini
+      # flash-lite, not flash: the free tier allows 20 requests/day per model,
+      # and the lite models have their own separate quota bucket.
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      # Restrict to the static frontend's origin once it is deployed.
+      - key: CONDUIT_WEB_ORIGINS
+        sync: false
+      # Set in the Render dashboard; never committed. Omit it and the demo
+      # still serves recorded runs, refusing live ones with a clear message.
+      - key: GOOGLE_API_KEY
+        sync: false

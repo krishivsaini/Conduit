@@ -15,7 +15,7 @@ codebase questions.
 > tool-vs-resource design, capability negotiation, transport, and (the
 > differentiator) security boundaries around exposing a filesystem over a protocol.
 
-`62 tests, 0 skipped` · `Python 3.10+` · `MIT`
+`78 tests, 0 skipped` · `Python 3.10+` · `MIT`
 
 **[Architecture & security model →](ARCHITECTURE.md)** · **[Evaluation results →](eval/results.md)**
 
@@ -88,12 +88,38 @@ uv run python eval/run_eval.py                    # gemini
 uv run python eval/run_eval.py --provider ollama  # fully local
 ```
 
+## Demo
+
+A browser view of the same loop, for people who would rather not clone a repo:
+it streams each tool call as it lands and renders a refusal as a *named
+boundary* — which guarantee fired, and the test that proves it — rather than an
+error.
+
+```bash
+uv sync --extra web
+uv run conduit-web                                # http://localhost:8000
+```
+
+The preset questions replay **real recorded runs** (captured by
+[`scripts/record_transcripts.py`](scripts/record_transcripts.py) from the same
+`eval/evaluation.xml` corpus the eval grades, labelled with the model and date
+that produced them); free-text questions run live and are rate limited. That
+split is deliberate: the Gemini free tier allows 20 requests per day per model
+and a question costs several, so a purely live demo would greet most visitors
+with a quota error. Deployment notes — including the Render blueprint and the
+static/API split — are in [docs/deploy.md](docs/deploy.md).
+
+The demo is a *second consumer* of `host.loop.run_turn`, exactly like the CLI.
+The MCP server is untouched by it, and `conduit/web/` sits outside the tree that
+[`tests/test_security_readonly.py`](tests/test_security_readonly.py) statically
+scans for writes and process spawning.
+
 ## Reproducing
 
 ```bash
 git clone https://github.com/krishivsaini/Conduit.git && cd Conduit
 uv sync --extra dev
-uv run pytest                                     # 62 passed
+uv run pytest                                     # 78 passed
 uv run conduit-server --repo-root ./sample-repo   # the MCP server over stdio
 ```
 
@@ -122,14 +148,15 @@ tool-vs-resource rationale.
 ```
 conduit/server/   MCP server: tools/, resources/, security/, indexer, access, errors
 conduit/host/     model-agnostic client: client, loop, cli, llm/ (adapter, gemini, ollama, stub)
-tests/            security (traversal/denylist/readonly), discovery, model-agnostic, tools
+conduit/web/      the deployable demo: Starlette app, rate limits, static frontend
+tests/            security (traversal/denylist/readonly), discovery, model-agnostic, tools, web
 eval/             evaluation.xml + run_eval.py + results.md
 sample-repo/      the bundled demo target (with fake secrets for the deny-list demo)
 ```
 
 Design docs: [requirements](docs/requirement.md) · [product design](docs/product_design.md) ·
 [architecture](docs/architecture.md) · [implementation plan](docs/implementation_plan.md) ·
-[full build plan](CONDUIT_BUILD_PLAN.md).
+[deploying the demo](docs/deploy.md) · [full build plan](CONDUIT_BUILD_PLAN.md).
 
 ## License
 
