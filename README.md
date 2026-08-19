@@ -17,7 +17,7 @@ codebase questions.
 
 `78 tests, 0 skipped` · `Python 3.10+` · `MIT`
 
-**[Architecture & security model →](ARCHITECTURE.md)** · **[Evaluation results →](eval/results.md)**
+**[Live demo →](https://conduit-3c6.pages.dev/)** · **[Architecture & security model →](ARCHITECTURE.md)** · **[Evaluation results →](eval/results.md)**
 
 ---
 
@@ -90,10 +90,16 @@ uv run python eval/run_eval.py --provider ollama  # fully local
 
 ## Demo
 
+**[conduit-3c6.pages.dev →](https://conduit-3c6.pages.dev/)**
+
 A browser view of the same loop, for people who would rather not clone a repo:
 it streams each tool call as it lands and renders a refusal as a *named
 boundary* — which guarantee fired, and the test that proves it — rather than an
-error.
+error. Try **"Asks for a secret"**: the deny-list refuses `.env` and
+`service.key`, and the model answers from the refusal.
+
+The tool chips on the page are fetched from the running server on load, so they
+are runtime discovery you can watch, not a screenshot.
 
 ```bash
 uv sync --extra web
