@@ -8,7 +8,7 @@ tool invocation so the CLI can make the MCP loop legible.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from mcp.types import CallToolResult
 
@@ -50,12 +50,17 @@ async def run_turn(
     user_message: str,
     *,
     max_steps: int = MAX_STEPS,
+    on_step: Callable[[ToolInvocation], None] | None = None,
 ) -> LoopResult:
     """Answer one user message by discovering and driving the server's tools.
 
     Discovers tool schemas at runtime, then loops: adapter selects a tool + args
     → client calls it over MCP → feed the result back → repeat until the adapter
     returns a final answer (or the step budget is exhausted).
+
+    ``on_step`` is an optional synchronous callback invoked with each
+    ToolInvocation as it completes, so a caller can render the loop live rather
+    than waiting for the turn to finish. Omitting it leaves behaviour unchanged.
     """
     discovered = await client.discover_tools()
     tool_schemas = [
@@ -75,14 +80,15 @@ async def run_turn(
         assert isinstance(decision, ToolCall)
         result = await client.call_tool(decision.name, decision.arguments)
         text = _result_text(result)
-        steps.append(
-            ToolInvocation(
-                name=decision.name,
-                arguments=decision.arguments,
-                result_text=text,
-                is_error=bool(result.isError),
-            )
+        invocation = ToolInvocation(
+            name=decision.name,
+            arguments=decision.arguments,
+            result_text=text,
+            is_error=bool(result.isError),
         )
+        steps.append(invocation)
+        if on_step is not None:
+            on_step(invocation)
         messages.append(
             {
                 "role": "tool_call",
