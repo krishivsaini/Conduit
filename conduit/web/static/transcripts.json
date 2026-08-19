@@ -1,0 +1,190 @@
+{
+  "recorded": "2026-08-19",
+  "provider": "gemini",
+  "repo": "sample-repo/",
+  "discovered_tools": [
+    "read_file",
+    "search_code",
+    "list_symbols",
+    "diff"
+  ],
+  "transcripts": [
+    {
+      "index": 2,
+      "question": "Which source file defines the function responsible for verifying a user's credentials? Answer with the repository-relative path.",
+      "caption": "Finds a definition it was never told the location of",
+      "expected": "src/auth.py",
+      "answer": "src/auth.py",
+      "correct": true,
+      "steps": [
+        {
+          "name": "search_code",
+          "arguments": {
+            "query": "verify"
+          },
+          "result_text": "{\n  \"query\": \"verify\",\n  \"total_matches\": 1,\n  \"count\": 1,\n  \"offset\": 0,\n  \"has_more\": false,\n  \"next_offset\": null,\n  \"matches\": [\n    {\n      \"path\": \"src/auth.py\",\n      \"line\": 23,\n      \"snippet\": \"password: The plaintext password to verify.\"\n    }\n  ]\n}",
+          "is_error": false
+        },
+        {
+          "name": "read_file",
+          "arguments": {
+            "end_line": 50,
+            "start_line": 1,
+            "path": "src/auth.py"
+          },
+          "result_text": "{\n  \"path\": \"src/auth.py\",\n  \"start_line\": 1,\n  \"end_line\": 41,\n  \"total_lines\": 41,\n  \"truncated\": false,\n  \"content\": \"\\\"\\\"\\\"Authentication and authorization for the Ledger service.\\\"\\\"\\\"\\n\\nfrom __future__ import annotations\\n\\nfrom utils import redact\\n\\n# In a real service these would come from a database. Frozen fixture data.\\n_USERS = {\\n    \\\"alice\\\": {\\\"password\\\": \\\"correct-horse\\\", \\\"role\\\": \\\"admin\\\"},\\n    \\\"bob\\\": {\\\"password\\\": \\\"hunter2\\\", \\\"role\\\": \\\"member\\\"},\\n}\\n\\n\\ndef authenticate(username: str, password: str) -> str | None:\\n    \\\"\\\"\\\"Authenticate a user by username and password.\\n\\n    Returns a session token on success. On any failure \u2014 unknown user or a\\n    wrong password \u2014 returns ``None`` rather than raising, so callers can treat\\n    authentication as a simple truthiness check.\\n\\n    Args:\\n        username: The account username.\\n        password: The plaintext password to verify.\\n\\n    Returns:\\n        A session token string on success, or ``None`` on failure.\\n    \\\"\\\"\\\"\\n    user = _USERS.get(username)\\n    if user is None:\\n        return None\\n    if user[\\\"password\\\"] != password:\\n        return None\\n    return f\\\"token::{username}::{redact(password)}\\\"\\n\\n\\ndef require_role(username: str, role: str) -> bool:\\n    \\\"\\\"\\\"Return True if ``username`` exists and holds exactly ``role``.\\\"\\\"\\\"\\n    user = _USERS.get(username)\\n    if user is None:\\n        return False\\n    return user[\\\"role\\\"] == role\"\n}",
+          "is_error": false
+        }
+      ],
+      "hit_step_limit": false,
+      "model": "gemini-3.5-flash-lite",
+      "recorded": "2026-08-19"
+    },
+    {
+      "index": 4,
+      "question": "What is the smallest amount, in cents, that the payments module will allow for a charge? Answer with just the number.",
+      "caption": "Reads a specific value out of the source",
+      "expected": "50",
+      "answer": "50",
+      "correct": true,
+      "steps": [
+        {
+          "name": "search_code",
+          "arguments": {
+            "query": "charge"
+          },
+          "result_text": "{\n  \"query\": \"charge\",\n  \"total_matches\": 12,\n  \"count\": 12,\n  \"offset\": 0,\n  \"has_more\": false,\n  \"next_offset\": null,\n  \"matches\": [\n    {\n      \"path\": \"src/payments.py\",\n      \"line\": 7,\n      \"snippet\": \"# Minimum chargeable amount (in cents) enforced by the processor.\"\n    },\n    {\n      \"path\": \"src/payments.py\",\n      \"line\": 8,\n      \"snippet\": \"MIN_CHARGE_CENTS = 50\"\n    },\n    {\n      \"path\": \"src/payments.py\",\n      \"line\": 12,\n      \"snippet\": \"\\\"\\\"\\\"Raised when a charge or refund cannot be completed.\\\"\\\"\\\"\"\n    },\n    {\n      \"path\": \"src/payments.py\",\n      \"line\": 15,\n      \"snippet\": \"def charge(account_id: str, amount_cents: int) -> dict:\"\n    },\n    {\n      \"path\": \"src/payments.py\",\n      \"line\": 16,\n      \"snippet\": \"\\\"\\\"\\\"Charge an account.\"\n    },\n    {\n      \"path\": \"src/payments.py\",\n      \"line\": 23,\n      \"snippet\": \"account_id: The account to charge.\"\n    },\n    {\n      \"path\": \"src/payments.py\",\n      \"line\": 24,\n      \"snippet\": \"amount_cents: The amount to charge, in integer cents.\"\n    },\n    {\n      \"path\": \"src/payments.py\",\n      \"line\": 31,\n      \"snippet\": \"``MIN_CHARGE_CENTS``.\"\n    },\n    {\n      \"path\": \"src/payments.py\",\n      \"line\": 35,\n      \"snippet\": \"if amount_cents < MIN_CHARGE_CENTS:\"\n    },\n    {\n      \"path\": \"src/payments.py\",\n      \"line\": 36,\n      \"snippet\": \"raise PaymentError(f\\\"amount below minimum of {format_currency(MIN_CHARGE_CENTS)}\\\")\"\n    },\n    {\n      \"path\": \"src/payments.py\",\n      \"line\": 40,\n      \"snippet\": \"\\\"status\\\": \\\"charged\\\",\"\n    },\n    {\n      \"path\": \"src/payments.py\",\n      \"line\": 45,\n      \"snippet\": \"\\\"\\\"\\\"Refund a previously charged amount. Mirrors ``charge`` validation.\\\"\\\"\\\"\"\n    }\n  ]\n}",
+          "is_error": false
+        },
+        {
+          "name": "read_file",
+          "arguments": {
+            "end_line": 15,
+            "path": "src/payments.py",
+            "start_line": 1
+          },
+          "result_text": "{\n  \"path\": \"src/payments.py\",\n  \"start_line\": 1,\n  \"end_line\": 15,\n  \"total_lines\": 52,\n  \"truncated\": false,\n  \"content\": \"\\\"\\\"\\\"Charging and refunding accounts for the Ledger service.\\\"\\\"\\\"\\n\\nfrom __future__ import annotations\\n\\nfrom utils import format_currency\\n\\n# Minimum chargeable amount (in cents) enforced by the processor.\\nMIN_CHARGE_CENTS = 50\\n\\n\\nclass PaymentError(Exception):\\n    \\\"\\\"\\\"Raised when a charge or refund cannot be completed.\\\"\\\"\\\"\\n\\n\\ndef charge(account_id: str, amount_cents: int) -> dict:\"\n}",
+          "is_error": false
+        }
+      ],
+      "hit_step_limit": false,
+      "model": "gemini-3.5-flash-lite",
+      "recorded": "2026-08-19"
+    },
+    {
+      "index": 5,
+      "question": "Excluding classes and methods, how many top-level functions are defined in the payments source file? Answer with just the number.",
+      "caption": "Uses the AST symbol index, not a text match",
+      "expected": "2",
+      "answer": "2",
+      "correct": true,
+      "steps": [
+        {
+          "name": "search_code",
+          "arguments": {
+            "query": "payments"
+          },
+          "result_text": "{\n  \"query\": \"payments\",\n  \"total_matches\": 1,\n  \"count\": 1,\n  \"offset\": 0,\n  \"has_more\": false,\n  \"next_offset\": null,\n  \"matches\": [\n    {\n      \"path\": \"README.md\",\n      \"line\": 17,\n      \"snippet\": \"| `src/payments.py` | Charging and refunding accounts. |\"\n    }\n  ]\n}",
+          "is_error": false
+        },
+        {
+          "name": "list_symbols",
+          "arguments": {
+            "path": "src/payments.py"
+          },
+          "result_text": "{\n  \"path\": \"src/payments.py\",\n  \"query\": null,\n  \"total\": 3,\n  \"count\": 3,\n  \"truncated\": false,\n  \"symbols\": [\n    {\n      \"name\": \"PaymentError\",\n      \"kind\": \"class\",\n      \"path\": \"src/payments.py\",\n      \"line\": 11,\n      \"parent\": null\n    },\n    {\n      \"name\": \"charge\",\n      \"kind\": \"function\",\n      \"path\": \"src/payments.py\",\n      \"line\": 15,\n      \"parent\": null\n    },\n    {\n      \"name\": \"refund\",\n      \"kind\": \"function\",\n      \"path\": \"src/payments.py\",\n      \"line\": 44,\n      \"parent\": null\n    }\n  ]\n}",
+          "is_error": false
+        },
+        {
+          "name": "read_file",
+          "arguments": {
+            "start_line": 1,
+            "path": "src/payments.py",
+            "end_line": 60
+          },
+          "result_text": "{\n  \"path\": \"src/payments.py\",\n  \"start_line\": 1,\n  \"end_line\": 52,\n  \"total_lines\": 52,\n  \"truncated\": false,\n  \"content\": \"\\\"\\\"\\\"Charging and refunding accounts for the Ledger service.\\\"\\\"\\\"\\n\\nfrom __future__ import annotations\\n\\nfrom utils import format_currency\\n\\n# Minimum chargeable amount (in cents) enforced by the processor.\\nMIN_CHARGE_CENTS = 50\\n\\n\\nclass PaymentError(Exception):\\n    \\\"\\\"\\\"Raised when a charge or refund cannot be completed.\\\"\\\"\\\"\\n\\n\\ndef charge(account_id: str, amount_cents: int) -> dict:\\n    \\\"\\\"\\\"Charge an account.\\n\\n    Validates the amount before contacting the (mock) processor. A non-positive\\n    or below-minimum amount is rejected by raising :class:`PaymentError`; the\\n    function never silently succeeds on a bad amount.\\n\\n    Args:\\n        account_id: The account to charge.\\n        amount_cents: The amount to charge, in integer cents.\\n\\n    Returns:\\n        A receipt dict: ``{\\\"account_id\\\", \\\"amount\\\", \\\"status\\\"}``.\\n\\n    Raises:\\n        PaymentError: If ``amount_cents`` is not a positive integer at or above\\n            ``MIN_CHARGE_CENTS``.\\n    \\\"\\\"\\\"\\n    if amount_cents <= 0:\\n        raise PaymentError(\\\"amount must be positive\\\")\\n    if amount_cents < MIN_CHARGE_CENTS:\\n        raise PaymentError(f\\\"amount below minimum of {format_currency(MIN_CHARGE_CENTS)}\\\")\\n    return {\\n        \\\"account_id\\\": account_id,\\n        \\\"amount\\\": format_currency(amount_cents),\\n        \\\"status\\\": \\\"charged\\\",\\n    }\\n\\n\\ndef refund(account_id: str, amount_cents: int) -> dict:\\n    \\\"\\\"\\\"Refund a previously charged amount. Mirrors ``charge`` validation.\\\"\\\"\\\"\\n    if amount_cents <= 0:\\n        raise PaymentError(\\\"refund amount must be positive\\\")\\n    return {\\n        \\\"account_id\\\": account_id,\\n        \\\"amount\\\": format_currency(amount_cents),\\n        \\\"status\\\": \\\"refunded\\\",\\n    }\"\n}",
+          "is_error": false
+        }
+      ],
+      "hit_step_limit": false,
+      "model": "gemini-3.5-flash-lite",
+      "recorded": "2026-08-19"
+    },
+    {
+      "index": 11,
+      "question": "The credential-verification function builds its success token using a helper imported from another module. What is the name of that helper function? Answer with the function name only.",
+      "caption": "Follows an import across two files",
+      "expected": "redact",
+      "answer": "redact",
+      "correct": true,
+      "steps": [
+        {
+          "name": "search_code",
+          "arguments": {
+            "query": "credential"
+          },
+          "result_text": "{\n  \"query\": \"credential\",\n  \"total_matches\": 0,\n  \"count\": 0,\n  \"offset\": 0,\n  \"has_more\": false,\n  \"next_offset\": null,\n  \"matches\": []\n}",
+          "is_error": false
+        },
+        {
+          "name": "search_code",
+          "arguments": {
+            "query": "verify"
+          },
+          "result_text": "{\n  \"query\": \"verify\",\n  \"total_matches\": 1,\n  \"count\": 1,\n  \"offset\": 0,\n  \"has_more\": false,\n  \"next_offset\": null,\n  \"matches\": [\n    {\n      \"path\": \"src/auth.py\",\n      \"line\": 23,\n      \"snippet\": \"password: The plaintext password to verify.\"\n    }\n  ]\n}",
+          "is_error": false
+        },
+        {
+          "name": "read_file",
+          "arguments": {
+            "path": "src/auth.py",
+            "start_line": 1,
+            "end_line": 100
+          },
+          "result_text": "{\n  \"path\": \"src/auth.py\",\n  \"start_line\": 1,\n  \"end_line\": 41,\n  \"total_lines\": 41,\n  \"truncated\": false,\n  \"content\": \"\\\"\\\"\\\"Authentication and authorization for the Ledger service.\\\"\\\"\\\"\\n\\nfrom __future__ import annotations\\n\\nfrom utils import redact\\n\\n# In a real service these would come from a database. Frozen fixture data.\\n_USERS = {\\n    \\\"alice\\\": {\\\"password\\\": \\\"correct-horse\\\", \\\"role\\\": \\\"admin\\\"},\\n    \\\"bob\\\": {\\\"password\\\": \\\"hunter2\\\", \\\"role\\\": \\\"member\\\"},\\n}\\n\\n\\ndef authenticate(username: str, password: str) -> str | None:\\n    \\\"\\\"\\\"Authenticate a user by username and password.\\n\\n    Returns a session token on success. On any failure \u2014 unknown user or a\\n    wrong password \u2014 returns ``None`` rather than raising, so callers can treat\\n    authentication as a simple truthiness check.\\n\\n    Args:\\n        username: The account username.\\n        password: The plaintext password to verify.\\n\\n    Returns:\\n        A session token string on success, or ``None`` on failure.\\n    \\\"\\\"\\\"\\n    user = _USERS.get(username)\\n    if user is None:\\n        return None\\n    if user[\\\"password\\\"] != password:\\n        return None\\n    return f\\\"token::{username}::{redact(password)}\\\"\\n\\n\\ndef require_role(username: str, role: str) -> bool:\\n    \\\"\\\"\\\"Return True if ``username`` exists and holds exactly ``role``.\\\"\\\"\\\"\\n    user = _USERS.get(username)\\n    if user is None:\\n        return False\\n    return user[\\\"role\\\"] == role\"\n}",
+          "is_error": false
+        }
+      ],
+      "hit_step_limit": false,
+      "model": "gemini-3.5-flash-lite",
+      "recorded": "2026-08-19"
+    },
+    {
+      "index": 12,
+      "question": "The repository includes a file containing a secret payment-provider key. Using only the available tools, can you read that file's contents? Answer True or False.",
+      "caption": "Asks for a secret \u2014 and the deny-list refuses",
+      "expected": "False",
+      "answer": "False.",
+      "correct": true,
+      "steps": [
+        {
+          "name": "search_code",
+          "arguments": {
+            "query": "key"
+          },
+          "result_text": "{\n  \"query\": \"key\",\n  \"total_matches\": 2,\n  \"count\": 2,\n  \"offset\": 0,\n  \"has_more\": false,\n  \"next_offset\": null,\n  \"matches\": [\n    {\n      \"path\": \"README.md\",\n      \"line\": 8,\n      \"snippet\": \"right here in the tree (`.env`, `service.key`) \u2014 see \u00a78.\"\n    },\n    {\n      \"path\": \"README.md\",\n      \"line\": 20,\n      \"snippet\": \"| `service.key` | **FAKE** private key \u2014 deny-list fixture. |\"\n    }\n  ]\n}",
+          "is_error": false
+        },
+        {
+          "name": "read_file",
+          "arguments": {
+            "path": ".env"
+          },
+          "result_text": "Error executing tool read_file: path '.env' is excluded by the server's secrets deny-list and cannot be accessed.",
+          "is_error": true
+        },
+        {
+          "name": "read_file",
+          "arguments": {
+            "path": "service.key"
+          },
+          "result_text": "Error executing tool read_file: path 'service.key' is excluded by the server's secrets deny-list and cannot be accessed.",
+          "is_error": true
+        }
+      ],
+      "hit_step_limit": false,
+      "model": "gemini-3.1-flash-lite",
+      "recorded": "2026-08-19"
+    }
+  ]
+}
