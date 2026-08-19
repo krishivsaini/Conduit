@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conduit — an MCP server that refuses</title>
+<meta name="description" content="An MCP server that exposes a code repository through four read-only tools, behind boundaries proven by tests that try to break them. Watch the tool calls and the refusals.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%2316181A'/><rect x='7' y='4' width='4' height='24' fill='%23E4A11B'/><rect x='15' y='4' width='4' height='10' fill='%231B4FD8'/><rect x='15' y='18' width='4' height='10' fill='%231B4FD8'/></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-api="">
+
+<header class="masthead">
+  <div class="wrap masthead-inner">
+    <a class="wordmark" href="#top">
+      <span class="wordmark-rail" aria-hidden="true"></span>
+      Conduit
+    </a>
+    <nav class="masthead-links">
+      <a href="https://github.com/krishivsaini/Conduit">Source</a>
+      <a href="https://github.com/krishivsaini/Conduit/blob/main/ARCHITECTURE.md">Architecture</a>
+      <a href="https://github.com/krishivsaini/Conduit/tree/main/tests">Tests</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <section class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Model Context Protocol · server + host</p>
+      <h1 class="hero-title">An MCP&nbsp;server<br>that <em>refuses</em>.</h1>
+      <p class="hero-lede">
+        Conduit exposes a code repository over MCP through four read-only tools — search,
+        read, symbols, diff — behind a boundary that resolves every path before touching
+        disk. Ask it something below and watch the tool calls land. Ask it for a secret
+        and watch the boundary hold.
+      </p>
+
+      <div class="discovery" id="discovery">
+        <p class="discovery-label">
+          Tools, discovered from the running server
+          <span class="discovery-note">the client hardcodes none of these</span>
+        </p>
+        <ul class="chips" id="tool-chips" aria-live="polite">
+          <li class="chip chip-loading">contacting the server…</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="console">
+    <div class="wrap console-grid">
+
+      <aside class="asker">
+        <h2 class="panel-head"><span class="panel-rule"></span>Ask</h2>
+
+        <ul class="presets" id="presets"></ul>
+
+        <form class="freeform" id="freeform">
+          <label class="freeform-label" for="q">Or ask your own</label>
+          <textarea id="q" name="q" rows="2" maxlength="500"
+            placeholder="What does the charge function do when the amount is too low?"></textarea>
+          <button type="submit" id="ask-btn">
+            <span class="btn-label">Run it live</span>
+            <span class="btn-meta" id="btn-meta">calls a real model</span>
+          </button>
+          <p class="freeform-note" id="freeform-note">
+            Live runs are rate limited and share one free-tier quota. Recorded runs never are.
+          </p>
+        </form>
+      </aside>
+
+      <div class="stage">
+        <h2 class="panel-head">
+          <span class="panel-rule"></span>The trace
+          <span class="stage-badge" id="stage-badge" hidden></span>
+        </h2>
+
+        <div class="trace" id="trace">
+          <div class="empty">
+            <p class="empty-title">Nothing through the conduit yet.</p>
+            <p>Pick a question on the left. Every answer you see is built from
+               tool calls, and every tool call is shown — including the ones
+               the server turns down.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="boundaries">
+    <div class="wrap">
+      <h2 class="panel-head"><span class="panel-rule"></span>What the boundary actually is</h2>
+      <p class="boundaries-lede">
+        Three guarantees, each proven by a test that attempts a violation and asserts it fails.
+        Security tested, not asserted.
+      </p>
+      <ul class="boundary-list">
+        <li>
+          <h3>Repo-root confinement</h3>
+          <p>Resolves <code>..</code> <em>and</em> symlinks, then refuses anything landing
+             outside the root — including a sibling directory that merely shares the prefix.</p>
+          <a href="https://github.com/krishivsaini/Conduit/blob/main/tests/test_security_traversal.py">14 traversal cases →</a>
+        </li>
+        <li>
+          <h3>Secrets deny-list</h3>
+          <p><code>.env</code>, <code>*.key</code>, <code>*.pem</code>, <code>id_rsa</code>,
+             <code>.git/</code> are never read, never returned in search results, never listed
+             in the tree.</p>
+          <a href="https://github.com/krishivsaini/Conduit/blob/main/tests/test_security_denylist.py">Deny-list tests →</a>
+        </li>
+        <li>
+          <h3>Read-only posture</h3>
+          <p>The server refuses to start if a tool outside the allow-set is registered. A static
+             AST scan asserts no server code opens a file for writing or imports
+             <code>subprocess</code>.</p>
+          <a href="https://github.com/krishivsaini/Conduit/blob/main/tests/test_security_readonly.py">Read-only proof →</a>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <p>Conduit — Python, FastMCP, stdio transport. Model-agnostic host: Gemini or a fully local Ollama model.</p>
+    <p class="footer-meta" id="footer-meta"></p>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,670 @@
+/* Conduit — industrial signage for a protocol boundary.
+   The design inverts the usual error styling: a refusal is the product
+   working, so refusals get the boldest treatment on the page and successful
+   calls stay quiet. */
+
+:root {
+  --ink:        #16181a;
+  --ink-soft:   #4a4f55;
+  --ink-faint:  #878d94;
+  --concrete:   #e3e1dc;
+  --concrete-d: #cfccc5;
+  --paper:      #f6f5f2;
+  --signal:     #1b4fd8;
+  --hazard:     #e4a11b;
+  --hazard-d:   #8a5d00;
+
+  --rail-w: 2px;
+  --gap: clamp(1.5rem, 4vw, 3rem);
+  --measure: 68ch;
+
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--concrete);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 1.6;
+  font-variant-ligatures: none;
+}
+
+.wrap {
+  width: min(1180px, 100% - 2.5rem);
+  margin-inline: auto;
+}
+
+a { color: var(--signal); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { color: var(--ink); }
+
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 3px;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  background: var(--concrete-d);
+  padding: 0.1em 0.35em;
+}
+
+/* --- Masthead ----------------------------------------------------------- */
+
+.masthead {
+  border-bottom: var(--rail-w) solid var(--ink);
+  background: var(--paper);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.masthead-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 52px;
+  flex-wrap: wrap;
+}
+
+.wordmark {
+  font-family: var(--display);
+  font-variation-settings: "wdth" 118, "wght" 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.wordmark-rail {
+  width: 10px;
+  height: 18px;
+  background: var(--hazard);
+  border-left: var(--rail-w) solid var(--ink);
+  border-right: var(--rail-w) solid var(--ink);
+}
+
+.masthead-links {
+  display: flex;
+  gap: 1.4rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.masthead-links a { color: var(--ink-soft); text-decoration: none; }
+.masthead-links a:hover { color: var(--signal); text-decoration: underline; }
+
+/* --- Hero --------------------------------------------------------------- */
+
+.hero {
+  padding: clamp(2.5rem, 7vw, 5.5rem) 0 clamp(2rem, 5vw, 3.5rem);
+  border-bottom: var(--rail-w) solid var(--ink);
+}
+
+.eyebrow {
+  margin: 0 0 1.4rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.eyebrow::before {
+  content: "";
+  display: inline-block;
+  width: 2.2rem;
+  height: var(--rail-w);
+  background: var(--ink);
+  vertical-align: middle;
+  margin-right: 0.8rem;
+}
+
+.hero-title {
+  font-family: var(--display);
+  font-variation-settings: "wdth" 112, "wght" 800;
+  font-size: clamp(2.6rem, 9vw, 6.2rem);
+  line-height: 0.94;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  margin: 0 0 1.6rem;
+  max-width: 15ch;
+}
+
+/* Sized to the cap height rather than the em box, so the block hugs the word
+   instead of floating below it. */
+.hero-title em {
+  font-style: normal;
+  color: var(--hazard-d);
+  background-image: linear-gradient(var(--hazard), var(--hazard));
+  background-repeat: no-repeat;
+  background-size: 100% 0.82em;
+  background-position: 0 0.1em;
+}
+
+.hero-lede {
+  margin: 0 0 2.6rem;
+  max-width: var(--measure);
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+
+/* --- Discovered tools --------------------------------------------------- */
+
+.discovery-label {
+  margin: 0 0 0.7rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.discovery-note {
+  display: inline-block;
+  margin-left: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--ink-faint);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chip {
+  border: var(--rail-w) solid var(--ink);
+  background: var(--paper);
+  padding: 0.3rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+.chip-resource { background: var(--signal); color: #fff; }
+.chip-loading, .chip-offline {
+  border-style: dashed;
+  box-shadow: none;
+  background: transparent;
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+
+/* --- Console layout ----------------------------------------------------- */
+
+.console { padding: clamp(2rem, 5vw, 3.5rem) 0; }
+
+.console-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  gap: var(--gap);
+  align-items: start;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: var(--display);
+  font-variation-settings: "wdth" 108, "wght" 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin: 0 0 1.2rem;
+}
+
+.panel-rule {
+  width: 1.6rem;
+  height: 0.65rem;
+  background: var(--ink);
+  flex: none;
+}
+
+/* --- Presets ------------------------------------------------------------ */
+
+.presets {
+  list-style: none;
+  margin: 0 0 1.8rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.preset {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  background: var(--paper);
+  border: var(--rail-w) solid var(--ink);
+  padding: 0.7rem 0.85rem;
+  display: block;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.preset:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--ink); }
+.preset[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.preset[aria-pressed="true"] .preset-caption { color: var(--concrete-d); }
+
+.preset-caption {
+  display: block;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.preset-tag {
+  display: block;
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 0.25rem;
+}
+
+.preset-security { border-color: var(--hazard-d); background: var(--hazard); }
+.preset-security .preset-caption,
+.preset-security .preset-tag { color: var(--hazard-d); }
+.preset-security:hover { box-shadow: 4px 4px 0 var(--hazard-d); }
+.preset-security[aria-pressed="true"] { background: var(--ink); }
+.preset-security[aria-pressed="true"] .preset-caption { color: var(--hazard); }
+.preset-security[aria-pressed="true"] .preset-tag { color: var(--hazard); }
+
+/* --- Free-form ask ------------------------------------------------------ */
+
+.freeform {
+  border-top: var(--rail-w) solid var(--ink);
+  padding-top: 1.2rem;
+}
+
+.freeform-label {
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: 0.55rem;
+}
+
+.freeform textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 0.88rem;
+  padding: 0.6rem 0.7rem;
+  border: var(--rail-w) solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  resize: vertical;
+}
+
+.freeform textarea::placeholder { color: var(--ink-faint); }
+
+.freeform button {
+  margin-top: 0.6rem;
+  width: 100%;
+  font: inherit;
+  cursor: pointer;
+  background: var(--signal);
+  color: #fff;
+  border: var(--rail-w) solid var(--ink);
+  padding: 0.55rem 0.8rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.freeform button:hover:not(:disabled) { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--ink); }
+.freeform button:disabled { background: var(--concrete-d); color: var(--ink-faint); cursor: not-allowed; }
+
+.btn-label { font-weight: 600; letter-spacing: 0.04em; }
+.btn-meta { font-size: 0.7rem; opacity: 0.8; }
+
+.freeform-note {
+  margin: 0.7rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.freeform-note.is-warning { color: var(--hazard-d); }
+
+/* --- Stage / trace ------------------------------------------------------ */
+
+.stage { min-width: 0; }
+
+.stage-badge {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  padding: 0.15rem 0.5rem;
+  border: var(--rail-w) solid var(--ink);
+  background: var(--paper);
+}
+
+.stage-badge[data-kind="live"] { background: var(--signal); color: #fff; border-color: var(--signal); }
+
+.trace {
+  border: var(--rail-w) solid var(--ink);
+  background: var(--paper);
+  padding: clamp(1rem, 3vw, 1.8rem);
+  min-height: 22rem;
+}
+
+.empty { color: var(--ink-soft); max-width: 46ch; }
+.empty p { margin: 0 0 0.7rem; font-size: 0.88rem; }
+.empty-title {
+  font-family: var(--display);
+  font-variation-settings: "wdth" 100, "wght" 600;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.question {
+  margin: 0 0 1.5rem;
+  padding-left: 1rem;
+  border-left: 4px solid var(--ink);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+/* The rail: the conduit itself. Steps are nodes on it. */
+.rail {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 1.6rem;
+  position: relative;
+}
+
+.rail::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.4rem;
+  bottom: 0.4rem;
+  width: var(--rail-w);
+  background: var(--ink);
+}
+
+/* Past the first refusal the conduit reads as dead line, not live line. */
+.rail.is-severed .step-refused ~ .step::before { background: var(--ink-faint); }
+
+.step {
+  position: relative;
+  padding: 0 0 1.1rem;
+  animation: drop 0.28s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+.step::before {
+  content: "";
+  position: absolute;
+  left: -1.6rem;
+  top: 0.45rem;
+  width: 0.75rem;
+  height: 0.75rem;
+  background: var(--signal);
+  outline: var(--rail-w) solid var(--paper);
+}
+
+.step-refused::before { background: var(--hazard); }
+
+@keyframes drop {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.step-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.step-n {
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+  letter-spacing: 0.1em;
+}
+
+.step-call {
+  font-size: 0.88rem;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.step-call .arg-k { color: var(--ink-faint); }
+.step-call .arg-v { color: var(--signal); }
+
+.step-status {
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--ink-faint);
+  color: var(--ink-faint);
+}
+
+.step-body { margin-top: 0.5rem; }
+
+.step-out {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--concrete);
+  border-left: var(--rail-w) solid var(--concrete-d);
+  padding: 0.5rem 0.7rem;
+  max-height: 11rem;
+  overflow: auto;
+  color: var(--ink-soft);
+}
+
+.step-toggle {
+  font: inherit;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: none;
+  border: 0;
+  padding: 0.25rem 0;
+  color: var(--ink-faint);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.step-toggle:hover { color: var(--signal); }
+
+/* The signature moment: the boundary cutting the conduit. The negative inset
+   pulls the block back over the rail so the hazard bar physically severs it,
+   rather than sitting politely alongside. */
+.barrier {
+  margin-top: 0.6rem;
+  margin-left: calc(-1.6rem - var(--rail-w));
+  border: var(--rail-w) solid var(--ink);
+  background: var(--paper);
+  box-shadow: 4px 4px 0 rgba(22, 24, 26, 0.14);
+  animation: slam 0.3s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+@keyframes slam {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+
+.barrier-bar {
+  height: 0.85rem;
+  background: repeating-linear-gradient(
+    -45deg, var(--hazard) 0 8px, var(--ink) 8px 16px
+  );
+  border-bottom: var(--rail-w) solid var(--ink);
+}
+
+.barrier-body { padding: 0.7rem 0.85rem; }
+
+.barrier-title {
+  font-family: var(--display);
+  font-variation-settings: "wdth" 108, "wght" 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin: 0 0 0.35rem;
+}
+
+.barrier-detail {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  word-break: break-word;
+}
+
+.barrier-proof { font-size: 0.75rem; }
+
+.answer {
+  margin-top: 1.4rem;
+  padding-top: 1.2rem;
+  border-top: var(--rail-w) solid var(--ink);
+}
+
+.answer-label {
+  font-family: var(--display);
+  font-variation-settings: "wdth" 108, "wght" 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 0.5rem;
+}
+
+.answer-text {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.answer-check {
+  margin: 0.8rem 0 0;
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+}
+
+.answer-check b { font-weight: 600; color: var(--ink); }
+
+.notice {
+  border: var(--rail-w) solid var(--hazard-d);
+  background: var(--hazard);
+  color: var(--hazard-d);
+  padding: 0.7rem 0.9rem;
+  font-size: 0.85rem;
+  margin-top: 1rem;
+}
+
+.working {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding: 0.4rem 0;
+}
+
+.working-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  background: var(--signal);
+  animation: pulse 1s steps(2, end) infinite;
+}
+
+@keyframes pulse { 50% { opacity: 0.25; } }
+
+/* --- Boundaries --------------------------------------------------------- */
+
+.boundaries {
+  border-top: var(--rail-w) solid var(--ink);
+  padding: clamp(2.5rem, 6vw, 4rem) 0;
+}
+
+.boundaries-lede {
+  margin: 0 0 2rem;
+  max-width: var(--measure);
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.boundary-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1px;
+  background: var(--ink);
+  border: var(--rail-w) solid var(--ink);
+}
+
+.boundary-list li { background: var(--paper); padding: 1.2rem 1.1rem; }
+
+.boundary-list h3 {
+  font-family: var(--display);
+  font-variation-settings: "wdth" 106, "wght" 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin: 0 0 0.6rem;
+}
+
+.boundary-list p {
+  margin: 0 0 0.8rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.boundary-list a { font-size: 0.78rem; }
+
+/* --- Footer ------------------------------------------------------------- */
+
+.footer {
+  border-top: var(--rail-w) solid var(--ink);
+  background: var(--paper);
+  padding: 1.4rem 0;
+}
+
+.footer-inner p { margin: 0; font-size: 0.78rem; color: var(--ink-soft); }
+.footer-meta { margin-top: 0.4rem !important; color: var(--ink-faint) !important; }
+
+/* --- Responsive --------------------------------------------------------- */
+
+@media (max-width: 860px) {
+  .console-grid { grid-template-columns: 1fr; }
+  .hero-title { max-width: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
