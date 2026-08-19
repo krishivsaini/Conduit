@@ -1,6 +1,6 @@
 # Conduit — Requirements
 
-> **Status:** Draft v1 · Derived from `CONDUIT_BUILD_PLAN.md` (source of truth)
+> **Status:** Draft v1
 > **Purpose:** The contract for what must be true for Conduit to be "done." This document states *what* is required and how each requirement is verified. The *why* lives in [product_design.md](product_design.md), the *how it's structured* in [architecture.md](architecture.md), and the *how it's built* in [implementation_plan.md](implementation_plan.md).
 
 ---

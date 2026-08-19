@@ -1,6 +1,6 @@
 # Conduit — Implementation Plan
 
-> **Status:** Draft v1 · Derived from `CONDUIT_BUILD_PLAN.md` (source of truth)
+> **Status:** Draft v1
 > **Purpose:** The *how it gets built over time* — phases, day-by-day tasks, dependencies, per-phase exit criteria, and risks. Requirements are in [requirement.md](requirement.md); the structure being built in [architecture.md](architecture.md); the positioning in [product_design.md](product_design.md).
 >
 > **Cadence:** 12–14 days × ~3 hours/day, ₹0 to run.

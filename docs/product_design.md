@@ -1,6 +1,6 @@
 # Conduit — Product Design
 
-> **Status:** Draft v1 · Derived from `CONDUIT_BUILD_PLAN.md` (source of truth)
+> **Status:** Draft v1
 > **Purpose:** The *why* and the *experience*. Positioning, the audience it's designed to convince, the product's value proposition, the demo journey, the CLI experience, and the honest-claims discipline that keeps the product defensible. The *what* (requirements) is in [requirement.md](requirement.md); the *how* in [architecture.md](architecture.md) and [implementation_plan.md](implementation_plan.md).
 
 ---

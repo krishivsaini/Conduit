@@ -162,7 +162,7 @@ sample-repo/      the bundled demo target (with fake secrets for the deny-list d
 
 Design docs: [requirements](docs/requirement.md) · [product design](docs/product_design.md) ·
 [architecture](docs/architecture.md) · [implementation plan](docs/implementation_plan.md) ·
-[deploying the demo](docs/deploy.md) · [full build plan](CONDUIT_BUILD_PLAN.md).
+[deploying the demo](docs/deploy.md).
 
 ## License
 

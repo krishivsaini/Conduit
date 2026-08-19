@@ -1,6 +1,6 @@
 # Conduit — Architecture
 
-> **Status:** Draft v1 · Derived from `CONDUIT_BUILD_PLAN.md` (source of truth)
+> **Status:** Draft v1
 > **Purpose:** The *how it's structured* — components, boundaries, data flow, the security model, the schema design, and the key trade-offs. This is the planning-phase architecture; the shipped repo will also carry a root `ARCHITECTURE.md` (the hiring-facing version). The *what* is in [requirement.md](requirement.md); the *why* in [product_design.md](product_design.md); the *build order* in [implementation_plan.md](implementation_plan.md).
 >
 > **⚠️ Verify before building.** The MCP protocol, SDKs, and transport story change. Confirm the current spec (`https://modelcontextprotocol.io/sitemap.xml`, pages with `.md` suffix), the installed SDK API, the transport recommendation, and the current Gemini/Ollama tool-calling APIs against live docs before writing code. Follow the `mcp-builder` skill for the server. Do not build from memory.

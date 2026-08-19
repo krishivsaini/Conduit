@@ -38,3 +38,6 @@ venv/
 !sample-repo/.env
 !sample-repo/service.key
 !sample-repo/*.pem
+
+# The private build plan. Kept locally, deliberately not published.
+CONDUIT_BUILD_PLAN.md
