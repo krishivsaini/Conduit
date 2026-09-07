@@ -206,6 +206,46 @@ code {
   font-weight: 400;
 }
 
+/* Cold-start notice. The demo API sleeps on a free instance, so the first
+   request pays a boot cost. Say that out loud, with a running clock, instead
+   of sitting on a spinner that reads as broken. */
+
+.wake {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin: 0.9rem 0 0;
+  padding: 0.65rem 0.85rem;
+  max-width: var(--measure);
+  border: var(--rail-w) solid var(--hazard-d);
+  background: var(--hazard);
+  color: var(--hazard-d);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.wake b { font-weight: 600; }
+
+.wake[data-state="awake"] {
+  border-color: var(--ink);
+  background: var(--paper);
+  color: var(--ink-soft);
+}
+
+.wake-dot {
+  flex: none;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-top: 0.4rem;
+  background: var(--hazard-d);
+  animation: pulse 1s steps(2, end) infinite;
+}
+
+.wake[data-state="awake"] .wake-dot {
+  background: var(--signal);
+  animation: none;
+}
+
 /* --- Console layout ----------------------------------------------------- */
 
 .console { padding: clamp(2rem, 5vw, 3.5rem) 0; }

@@ -23,9 +23,12 @@ const el = {
   btnMeta: document.getElementById("btn-meta"),
   note: document.getElementById("freeform-note"),
   footerMeta: document.getElementById("footer-meta"),
+  wake: document.getElementById("wake"),
+  wakeText: document.getElementById("wake-text"),
 };
 
 let running = false;
+let apiAwake = false;
 
 /* --- Naming the boundary -------------------------------------------------
  * A refusal is only meaningful if the page says which guarantee fired. The
@@ -164,7 +167,10 @@ function drawAnswer(text, meta) {
 function working(label) {
   const box = h("div", "working");
   box.append(h("span", "working-dot"));
-  box.append(h("span", null, label));
+  box.append(h("span", "working-label", label));
+  box.setLabel = (next) => {
+    box.querySelector(".working-label").textContent = next;
+  };
   return box;
 }
 
@@ -172,6 +178,58 @@ function notice(message) {
   const box = h("p", "notice", message);
   el.trace.append(box);
   return box;
+}
+
+/* --- Cold start ----------------------------------------------------------
+ * The API sleeps on a free instance. A cold request does not fail — it hangs
+ * for ~30-60s while the container boots, then succeeds. Left unexplained that
+ * looks like a broken page, so name the cause and show a running clock. The
+ * wait is the host booting, not the MCP server. */
+
+const COLD_AFTER_MS = 2500;
+
+function coldStartWatch() {
+  const t0 = Date.now();
+  let ticker = null;
+
+  const render = () => {
+    const s = Math.round((Date.now() - t0) / 1000);
+    el.wakeText.textContent = "";
+    el.wakeText.append(h("b", null, `Waking the demo server — ${s}s.`));
+    el.wakeText.append(
+      document.createTextNode(
+        " The API sleeps on a free Render instance and cold-starts on the first" +
+        " request, usually 30–60s. This wait is the host booting, not the MCP" +
+        " server: once it is up, tool calls return in milliseconds. The recorded" +
+        " runs need no server and play instantly."
+      )
+    );
+  };
+
+  const armed = setTimeout(() => {
+    el.wake.hidden = false;
+    el.wake.dataset.state = "waking";
+    render();
+    ticker = setInterval(render, 1000);
+  }, COLD_AFTER_MS);
+
+  return {
+    settle(ok) {
+      clearTimeout(armed);
+      if (ticker) clearInterval(ticker);
+      const ms = Date.now() - t0;
+      if (el.wake.hidden) return ms;          // woke fast; never announced it
+      if (!ok) { el.wake.hidden = true; return ms; }
+      el.wake.dataset.state = "awake";
+      el.wakeText.textContent = "";
+      el.wakeText.append(h("b", null, `Server awake — cold start took ${(ms / 1000).toFixed(1)}s.`));
+      el.wakeText.append(
+        document.createTextNode(" Tool calls from here are immediate.")
+      );
+      setTimeout(() => { el.wake.hidden = true; }, 10000);
+      return ms;
+    },
+  };
 }
 
 /* --- Recorded playback ---------------------------------------------------
@@ -205,8 +263,11 @@ async function playRecorded(t) {
 
 async function runLive(question) {
   const rail = resetTrace(question, "live");
-  const spinner = working("asking the model");
+  const spinner = working(
+    apiAwake ? "asking the model" : "waking the server — first request takes 30–60s"
+  );
   el.trace.append(spinner);
+  const watch = apiAwake ? null : coldStartWatch();
 
   let n = 0;
   let answered = false;
@@ -214,6 +275,10 @@ async function runLive(question) {
     const res = await fetch(`${API}/api/ask?q=${encodeURIComponent(question)}`, {
       headers: { Accept: "text/event-stream" },
     });
+
+    apiAwake = true;
+    if (watch) watch.settle(true);
+    spinner.setLabel("asking the model");
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -267,6 +332,7 @@ async function runLive(question) {
     }
     if (!answered) notice("The stream ended before an answer arrived.");
   } catch (err) {
+    if (watch) watch.settle(false);
     notice(`Could not reach the demo API: ${err.message}`);
   } finally {
     spinner.remove();
@@ -320,10 +386,13 @@ async function loadTranscripts() {
 }
 
 async function loadTools() {
+  const watch = coldStartWatch();
   try {
     const res = await fetch(`${API}/api/tools`);
     if (!res.ok) throw new Error(String(res.status));
     const data = await res.json();
+    apiAwake = true;
+    watch.settle(true);
     el.chips.textContent = "";
     data.tools.forEach((t) => {
       const chip = h("li", "chip", t.name);
@@ -333,6 +402,7 @@ async function loadTools() {
     data.resources.forEach((r) => el.chips.append(h("li", "chip chip-resource", r.uri)));
   } catch {
     // The API sleeps on a free tier; the recorded path does not need it.
+    watch.settle(false);
     el.chips.textContent = "";
     const known = ["read_file", "search_code", "list_symbols", "diff"];
     known.forEach((n) => el.chips.append(h("li", "chip chip-offline", n)));
