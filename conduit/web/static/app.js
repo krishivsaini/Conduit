@@ -320,7 +320,8 @@ async function runLive(question) {
           drawAnswer(
             payload.text,
             payload.hit_step_limit
-              ? h("p", "answer-check", "The loop hit its step budget before finishing.")
+              ? h("p", "answer-check",
+                  "The loop spent its full tool budget, then answered from the evidence it had.")
               : null
           );
         } else if (event === "error") {

@@ -37,7 +37,7 @@ class OllamaAdapter(LLMAdapter):
         response = await self._client.chat(
             model=self.model,
             messages=_to_messages(messages),
-            tools=_to_tools(tool_schemas),
+            tools=_to_tools(tool_schemas) or None,  # no tools => must answer in text
             options={"temperature": 0},  # deterministic tool selection
         )
         message = response.message

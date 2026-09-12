@@ -41,9 +41,12 @@ class GeminiAdapter(LLMAdapter):
 
     async def decide(self, messages: list[Message], tool_schemas: list[dict[str, Any]]) -> Decision:
         contents = _to_contents(messages)
+        # No tool schemas means "answer in text" — the loop uses that to force a
+        # final answer once the tool budget is spent. An empty function
+        # declaration list is not valid, so drop the tools config entirely.
         config = types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
-            tools=[_to_tool(tool_schemas)],
+            tools=[_to_tool(tool_schemas)] if tool_schemas else None,
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
         response = await asyncio.to_thread(
