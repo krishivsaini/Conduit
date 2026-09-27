@@ -107,7 +107,6 @@ def get_adapter(provider: str | None = None) -> LLMAdapter:
         from .ollama import OllamaAdapter
 
         return OllamaAdapter.from_env()
-    raise ValueError(
-        f"unknown LLM_PROVIDER '{provider}'. Use 'gemini' or 'ollama' "
-        f"(the 'stub' adapter is constructed directly in tests)."
-    )
+    # The deterministic 'stub' adapter is deliberately not selectable here —
+    # tests construct it directly.
+    raise ValueError(f"unknown LLM_PROVIDER '{provider}'. Use 'gemini' or 'ollama'.")

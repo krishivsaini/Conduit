@@ -15,7 +15,7 @@ codebase questions.
 > tool-vs-resource design, capability negotiation, transport, and (the
 > differentiator) security boundaries around exposing a filesystem over a protocol.
 
-`78 tests, 0 skipped` · `Python 3.10+` · `MIT`
+`93 tests, 0 skipped` · `Python 3.10+` · `MIT`
 
 **[Live demo →](https://conduit-3c6.pages.dev/)** · **[Architecture & security model →](ARCHITECTURE.md)** · **[Evaluation results →](eval/results.md)**
 
@@ -125,7 +125,7 @@ scans for writes and process spawning.
 ```bash
 git clone https://github.com/krishivsaini/Conduit.git && cd Conduit
 uv sync --extra dev
-uv run pytest                                     # 78 passed
+uv run pytest                                     # 93 passed
 uv run conduit-server --repo-root ./sample-repo   # the MCP server over stdio
 ```
 

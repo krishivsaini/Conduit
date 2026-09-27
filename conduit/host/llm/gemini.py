@@ -34,8 +34,9 @@ class GeminiAdapter(LLMAdapter):
         key = os.environ.get("GOOGLE_API_KEY")
         if not key:
             raise RuntimeError(
-                "GOOGLE_API_KEY is not set. Add it to your environment or .env, "
-                "or set LLM_PROVIDER=ollama to run fully locally."
+                "GOOGLE_API_KEY is not set. Get a free key at "
+                "https://aistudio.google.com/apikey and add it to .env (see "
+                ".env.example), or run fully locally with LLM_PROVIDER=ollama."
             )
         return cls(key, os.environ.get("GEMINI_MODEL", DEFAULT_MODEL))
 

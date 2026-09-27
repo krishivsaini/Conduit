@@ -43,7 +43,10 @@ def build_server(config: ServerConfig) -> FastMCP:
     registration passes ``config`` so tools can route path inputs through the
     security boundary before touching the filesystem.
     """
-    mcp = FastMCP("conduit_mcp")
+    # FastMCP logs every request at INFO. Over stdio that stream is the host's
+    # stderr, so a CLI user would see server chatter interleaved with their
+    # answer. Default to WARNING; FASTMCP_LOG_LEVEL=INFO brings it back.
+    mcp = FastMCP("conduit_mcp", log_level=os.environ.get("FASTMCP_LOG_LEVEL", "WARNING"))
 
     # --- Registration ---
     from .resources import repo_tree
