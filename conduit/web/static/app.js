@@ -9,7 +9,11 @@
  * Set that origin in <body data-api="https://...">.
  */
 
-const API = document.body.dataset.api || "";
+// data-api points the *deployed* static page at the separately hosted API.
+// When the page comes from localhost it is being served by `conduit-web`
+// itself, which hosts the API on the same origin — use that, not production.
+const IS_LOCAL = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+const API = IS_LOCAL ? "" : document.body.dataset.api || "";
 const REPO = "https://github.com/krishivsaini/Conduit";
 
 const el = {
@@ -96,7 +100,21 @@ function resetTrace(question, kind) {
   const rail = h("ol", "rail");
   rail.id = "rail";
   el.trace.append(rail);
+  revealTrace();
   return rail;
+}
+
+/* On a phone the trace stacks below the presets and the form, so a tapped
+ * question would play entirely off-screen and look like nothing happened. On a
+ * short desktop viewport the same is true of everything below the fold. Scroll
+ * only when the trace is not already comfortably in view. */
+function revealTrace() {
+  const stage = el.trace.closest(".stage");
+  const top = stage.getBoundingClientRect().top;
+  // Leave it alone if at least ~40% of the viewport is already free below it.
+  if (top < 0 || top > window.innerHeight * 0.6) {
+    stage.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+  }
 }
 
 function drawStep(rail, step, n) {
@@ -118,10 +136,14 @@ function drawStep(rail, step, n) {
   } else {
     const pre = h("pre", "step-out", prettyResult(step.result_text));
     pre.hidden = true;
+    pre.id = `step-out-${n}`;
     const toggle = h("button", "step-toggle", "Show what the server returned");
     toggle.type = "button";
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-controls", pre.id);
     toggle.addEventListener("click", () => {
       pre.hidden = !pre.hidden;
+      toggle.setAttribute("aria-expanded", String(!pre.hidden));
       toggle.textContent = pre.hidden
         ? "Show what the server returned"
         : "Hide what the server returned";
@@ -188,7 +210,13 @@ function notice(message) {
 
 const COLD_AFTER_MS = 2500;
 
+/* One boot, one clock. A live question asked while the tool list is still
+ * waking the server waits on the same boot; a second watch would drive the
+ * same banner from a second t0 and the seconds would flicker between two. */
+let wakeWatch = null;
+
 function coldStartWatch() {
+  if (wakeWatch) return wakeWatch;
   const t0 = Date.now();
   let ticker = null;
 
@@ -213,8 +241,10 @@ function coldStartWatch() {
     ticker = setInterval(render, 1000);
   }, COLD_AFTER_MS);
 
-  return {
+  wakeWatch = {
     settle(ok) {
+      if (wakeWatch !== this) return;       // already settled by another request
+      wakeWatch = null;
       clearTimeout(armed);
       if (ticker) clearInterval(ticker);
       const ms = Date.now() - t0;
@@ -230,6 +260,7 @@ function coldStartWatch() {
       return ms;
     },
   };
+  return wakeWatch;
 }
 
 /* --- Recorded playback ---------------------------------------------------
@@ -415,10 +446,21 @@ async function loadTools() {
   }
 }
 
+el.input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    el.form.requestSubmit();
+  }
+});
+
 el.form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const question = el.input.value.trim();
-  if (!question || running) return;
+  if (running) return;
+  if (!question) {
+    el.input.focus();                       // an empty submit should land somewhere
+    return;
+  }
   setBusy(true);
   selectPreset(null);
   await runLive(question);

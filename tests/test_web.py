@@ -12,6 +12,8 @@ server over stdio — no network, no API key, no model.
 from __future__ import annotations
 
 import json
+import re
+from pathlib import Path
 
 import pytest
 from starlette.testclient import TestClient
@@ -281,3 +283,23 @@ def test_shipped_transcripts_are_well_formed_and_include_a_refusal():
     # The security question is the reason the demo exists.
     refusals = [s for t in data["transcripts"] for s in t["steps"] if s["is_error"]]
     assert refusals, "the recorded set must show the boundary refusing something"
+
+
+# --- Static frontend -------------------------------------------------------
+# These guard behaviours a browser test would catch but the API tests cannot.
+
+STATIC = Path(__file__).resolve().parents[1] / "conduit" / "web" / "static"
+
+
+def test_the_hidden_attribute_always_wins_over_component_display():
+    """Any component that sets `display` (the cold-start banner is a flex row)
+    outranks the browser's own [hidden] rule, so the element stays on screen.
+    That shipped once: every visitor saw an empty yellow bar under the tools."""
+    css = (STATIC / "style.css").read_text()
+    assert re.search(r"\[hidden\]\s*\{\s*display:\s*none\s*!important", css)
+
+
+def test_empty_state_does_not_assume_the_two_column_layout():
+    """On a phone the trace sits below the questions, not to their left."""
+    html = (STATIC / "index.html").read_text()
+    assert "on the left" not in html

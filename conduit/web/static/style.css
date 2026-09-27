@@ -56,6 +56,11 @@ code {
   padding: 0.1em 0.35em;
 }
 
+/* `hidden` must always win. Any component that sets `display` (e.g. .wake is
+   a flex row) otherwise outranks the browser's own [hidden] rule, and the
+   element stays on screen. */
+[hidden] { display: none !important; }
+
 /* --- Masthead ----------------------------------------------------------- */
 
 .masthead {
@@ -356,6 +361,25 @@ code {
 
 .freeform textarea::placeholder { color: var(--ink-faint); }
 
+.freeform-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+}
+
+.freeform-hint kbd {
+  font-family: var(--mono);
+  font-size: 0.95em;
+  padding: 0 0.3em;
+  border: 1px solid var(--concrete-d);
+  background: var(--paper);
+}
+
+/* No Shift key on a touchscreen keyboard; the hint would only mislead. */
+@media (hover: none) and (pointer: coarse) {
+  .freeform-hint { display: none; }
+}
+
 .freeform button {
   margin-top: 0.6rem;
   width: 100%;
@@ -389,7 +413,7 @@ code {
 
 /* --- Stage / trace ------------------------------------------------------ */
 
-.stage { min-width: 0; }
+.stage { min-width: 0; scroll-margin-top: 4.5rem; }
 
 .stage-badge {
   margin-left: auto;

@@ -67,8 +67,9 @@
 
         <form class="freeform" id="freeform">
           <label class="freeform-label" for="q">Or ask your own</label>
-          <textarea id="q" name="q" rows="2" maxlength="500"
+          <textarea id="q" name="q" rows="2" maxlength="500" aria-describedby="q-hint"
             placeholder="What does the charge function do when the amount is too low?"></textarea>
+          <p class="freeform-hint" id="q-hint"><kbd>Enter</kbd> to run · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</p>
           <button type="submit" id="ask-btn">
             <span class="btn-label">Run it live</span>
             <span class="btn-meta" id="btn-meta">calls a real model</span>
@@ -88,9 +89,9 @@
         <div class="trace" id="trace">
           <div class="empty">
             <p class="empty-title">Nothing through the conduit yet.</p>
-            <p>Pick a question on the left. Every answer you see is built from
-               tool calls, and every tool call is shown — including the ones
-               the server turns down.</p>
+            <p>Pick a question to replay a recorded run, or ask your own. Every
+               answer you see is built from tool calls, and every tool call is
+               shown — including the ones the server turns down.</p>
           </div>
         </div>
       </div>
