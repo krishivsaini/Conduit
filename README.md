@@ -17,7 +17,13 @@ codebase questions.
 
 `93 tests, 0 skipped` · `Python 3.10+` · `MIT`
 
-**[Live demo →](https://conduit-3c6.pages.dev/)** · **[Architecture & security model →](ARCHITECTURE.md)** · **[Evaluation results →](eval/results.md)**
+**[Architecture & security model →](ARCHITECTURE.md)** · **[Evaluation results →](eval/results.md)**
+
+https://github.com/user-attachments/assets/158b682b-d740-428a-8b23-3409ed3528c9
+
+*Twenty-one seconds: a tool added to the server and called by an unmodified
+client, the same CLI running on Gemini and on a fully local model, and the
+deny-list refusing `.env`.*
 
 ---
 
@@ -88,15 +94,13 @@ uv run python eval/run_eval.py                    # gemini
 uv run python eval/run_eval.py --provider ollama  # fully local
 ```
 
-## Demo
+## Web demo
 
-**[conduit-3c6.pages.dev →](https://conduit-3c6.pages.dev/)**
-
-A browser view of the same loop, for people who would rather not clone a repo:
-it streams each tool call as it lands and renders a refusal as a *named
-boundary* — which guarantee fired, and the test that proves it — rather than an
-error. Try **"Asks for a secret"**: the deny-list refuses `.env` and
-`service.key`, and the model answers from the refusal.
+A browser view of the same loop: it streams each tool call as it lands and
+renders a refusal as a *named boundary* — which guarantee fired, and the test
+that proves it — rather than an error. Try **"Asks for a secret"**: the
+deny-list refuses `.env` and `service.key`, and the model answers from the
+refusal.
 
 The tool chips on the page are fetched from the running server on load, so they
 are runtime discovery you can watch, not a screenshot.
