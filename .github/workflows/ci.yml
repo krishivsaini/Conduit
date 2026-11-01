@@ -1,0 +1,28 @@
+name: tests
+
+# Every push and pull request runs the full suite. No secrets are configured:
+# the tests never call a model (they use a scripted stub, or replay recorded
+# real runs), so a missing API key here is deliberate, not an oversight.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both ends of the supported range in pyproject.toml (>=3.10).
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python }}
+      # --locked fails the build if uv.lock is out of date with pyproject.toml.
+      - run: uv sync --locked --extra dev --extra web
+      - run: uv run pytest -q

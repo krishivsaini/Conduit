@@ -15,7 +15,7 @@ codebase questions.
 > tool-vs-resource design, capability negotiation, transport, and (the
 > differentiator) security boundaries around exposing a filesystem over a protocol.
 
-`127 tests, 0 skipped` · `Python 3.10+` · `MIT`
+[![tests](https://github.com/krishivsaini/Conduit/actions/workflows/ci.yml/badge.svg)](https://github.com/krishivsaini/Conduit/actions/workflows/ci.yml) · `Python 3.10+` · `MIT`
 
 **[Architecture & security model →](ARCHITECTURE.md)** · **[Evaluation results →](eval/results.md)**
 
@@ -129,12 +129,18 @@ scans for writes and process spawning.
 ```bash
 git clone https://github.com/krishivsaini/Conduit.git && cd Conduit
 uv sync --extra dev
-uv run pytest                                     # 127 passed
+uv run pytest                                     # offline: no API key, no model calls
 uv run conduit-server --repo-root ./sample-repo   # the MCP server over stdio
 ```
 
 Clean clone to green tests runs in well under the 10-minute target. The Ollama
 path needs no network and no API key.
+
+The suite never calls a model, so it runs in CI with no secrets. The host loop
+is tested with a scripted stub, and [`tests/test_replay.py`](tests/test_replay.py)
+replays the demo's recorded **real Gemini runs** against the live server: every
+tool must return byte-for-byte what the model saw, so a change in server
+behaviour fails CI instead of silently going stale in the demo.
 
 ## Why MCP, not just function-calling?
 
