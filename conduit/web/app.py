@@ -183,10 +183,23 @@ def _sse(event: str, payload: Any) -> str:
 
 
 def _client_ip(request: Request) -> str:
-    """Best-effort client IP, honouring the proxy header the host sets."""
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """The visitor's IP, for rate limiting.
+
+    Only a header the proxy *sets* is trustworthy. X-Forwarded-For is not:
+    Cloudflare and Render both append to whatever the client sent, so its first
+    entry is attacker-controlled and a fresh fake value would buy a fresh
+    rate-limit bucket. The trusted header is therefore opt-in
+    (CONDUIT_CLIENT_IP_HEADER; render.yaml sets cf-connecting-ip, which
+    Cloudflare sets to the single address that connected to it). With no header
+    configured, or the header missing, this falls back to the socket peer. That
+    can't be forged, and behind a proxy it is the proxy itself, so every visitor
+    shares one bucket: the failure mode is over-limiting, never a bypass.
+    """
+    header = request.app.state.client_ip_header
+    if header:
+        value = request.headers.get(header, "").strip()
+        if value:
+            return value
     return request.client.host if request.client else "unknown"
 
 
@@ -269,6 +282,7 @@ def create_app(repo_root: Path | None = None, host: DemoHost | None = None) -> S
     app = Starlette(routes=routes, middleware=middleware)
     app.state.host = host or DemoHost(repo_root or SAMPLE_REPO)
     app.state.limiter = RateLimiter()
+    app.state.client_ip_header = os.environ.get("CONDUIT_CLIENT_IP_HEADER", "").strip().lower()
     return app
 
 

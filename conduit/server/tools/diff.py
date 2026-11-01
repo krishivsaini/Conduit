@@ -2,7 +2,7 @@
 
 Operates on two files' *contents* (stdlib ``difflib``). It deliberately does
 NOT diff git refs: doing so would require executing ``git`` as a subprocess,
-which the server's provably read-only / no-exec posture (§8.3) forbids — a
+which the server's read-only / no-exec posture (§8.3) forbids — a
 principled scope choice, not a shortcut. Both paths are security-checked
 (confinement + deny-list). readOnlyHint=True.
 """

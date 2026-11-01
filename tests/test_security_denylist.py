@@ -118,3 +118,38 @@ async def test_denied_files_absent_from_repo_tree(sample_repo):
     assert "service.key" not in names
     # sanity: ordinary files still appear
     assert "auth.py" in names
+
+
+# --- The deny-list is checked on the RESOLVED path --------------------------
+# Matching only the name the client typed would let an innocently named symlink
+# (notes.txt -> .env) walk a secret straight past the deny-list.
+
+
+@pytest.fixture
+def repo_with_disguised_secrets(tmp_path):
+    root = tmp_path / "repo"
+    (root / ".git").mkdir(parents=True)
+    (root / ".env").write_text("API_KEY=FAKE_disguised_secret_fixture\n")
+    (root / ".git" / "config").write_text("[remote] url = FAKE_disguised_git_fixture\n")
+    (root / "notes.txt").symlink_to(root / ".env")                       # file symlink
+    (root / "docs").symlink_to(root / ".git", target_is_directory=True)  # directory symlink
+    (root / "ok.txt").write_text("nothing secret here\n")
+    return root
+
+
+@pytest.mark.parametrize("disguise", ["notes.txt", "docs/config"])
+async def test_a_symlink_to_a_secret_is_refused(repo_with_disguised_secrets, disguise):
+    mcp = build_server(load_config(str(repo_with_disguised_secrets)))
+    with pytest.raises(ToolError) as exc:
+        await mcp.call_tool("read_file", {"path": disguise})
+    assert "deny-list" in str(exc.value)
+    with pytest.raises(ToolError) as exc:
+        await mcp.call_tool("diff", {"a": "ok.txt", "b": disguise})
+    assert "deny-list" in str(exc.value)
+
+
+async def test_a_symlinked_secret_never_reaches_search(repo_with_disguised_secrets):
+    mcp = build_server(load_config(str(repo_with_disguised_secrets)))
+    for token in ("FAKE_disguised_secret_fixture", "FAKE_disguised_git_fixture"):
+        _content, found = await mcp.call_tool("search_code", {"query": token})
+        assert found["total_matches"] == 0, token

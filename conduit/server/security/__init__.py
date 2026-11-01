@@ -5,7 +5,7 @@ a violation and asserts it fails:
 
   - boundary.py  → repo-root confinement / path-traversal defense
   - denylist.py  → secrets / .env / key exclusion
-  - readonly.py  → provably read-only posture
+  - readonly.py  → read-only posture, enforced when the server is built
 
 Enforcement ordering (an architectural invariant): every client-supplied path
 passes through boundary → denylist BEFORE any filesystem access. There is no

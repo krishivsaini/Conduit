@@ -111,8 +111,8 @@ violation and asserts it fails.** Client-supplied paths are untrusted.
 | Boundary | Enforced in | Proven by |
 |---|---|---|
 | **Repo-root confinement / path traversal** — resolve `..` *and* symlinks, then check containment by path ancestry (not string prefix) | `security/boundary.py` | `tests/test_security_traversal.py` (14 cases: `../`, absolute, symlink escape, sibling-prefix refused; valid/nested/in-root-symlink allowed) |
-| **Secrets deny-list** — case-insensitive, per-component glob (`.env`, `.env.*`, `*.key`, `*.pem`, `.git/`, `id_rsa`, …); checked on the *resolved* path so a symlink-to-secret is caught | `security/denylist.py` | `tests/test_security_denylist.py` (denied from read, search, and the tree) |
-| **Read-only posture** — no tool mutates the FS or executes code; the server refuses to build if a non-allow-listed tool, or one without `readOnlyHint`, is registered | `security/readonly.py` | `tests/test_security_readonly.py` (incl. an **AST scan** proving no server code path writes/deletes/`subprocess`/`shutil`) |
+| **Secrets deny-list** — case-insensitive, per-component glob (`.env`, `.env.*`, `*.key`, `*.pem`, `.git/`, `id_rsa`, …); checked on the *resolved* path so a symlink-to-secret is caught. Matches names, not file contents | `security/denylist.py` | `tests/test_security_denylist.py` (denied from read, search, and the tree; file and directory symlinks to secrets refused) |
+| **Read-only posture** — no tool mutates the FS or executes code; the server refuses to build if a non-allow-listed tool, or one without `readOnlyHint`, is registered | `security/readonly.py` | `tests/test_security_readonly.py` (a guard test smuggles a write tool into `build_server` and expects refusal; an **AST scan** checks no server code writes, deletes or starts a process, and is itself tested against 20 such patterns — a strong check, not a proof) |
 | **Bounded output** — reads are line-range capped (`MAX_LINES`), search is paginated | `read_file`, `search_code` | `tests/test_tools.py` |
 
 **Enforcement ordering (an architectural invariant):**

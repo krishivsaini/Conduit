@@ -20,6 +20,10 @@ services:
       # and the lite models have their own separate quota bucket.
       - key: GEMINI_MODEL
         value: gemini-3.5-flash-lite
+      # Render sits behind Cloudflare, which sets this to the one address that
+      # connected to it. Do not use X-Forwarded-For: clients can prepend to it.
+      - key: CONDUIT_CLIENT_IP_HEADER
+        value: cf-connecting-ip
       # Restrict to the static frontend's origin once it is deployed.
       - key: CONDUIT_WEB_ORIGINS
         sync: false

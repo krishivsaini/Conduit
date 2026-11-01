@@ -5,8 +5,8 @@
 Conduit is a [Model Context Protocol](https://modelcontextprotocol.io) server
 (Python + FastMCP) that exposes a code repository through four read-only tools —
 **search, read, symbol lookup, and diff** — and one resource, behind **hard
-security boundaries: repo-root confinement, a secrets deny-list, and a provably
-read-only posture, each proven by a test that attempts a violation and asserts
+security boundaries: repo-root confinement, a secrets deny-list, and a read-only
+posture enforced at startup, each proven by a test that attempts a violation and asserts
 it fails.** A model-agnostic host (Gemini free tier **or** a fully-local Ollama
 model) discovers the server's tools at runtime and drives them to answer
 codebase questions.
@@ -15,7 +15,7 @@ codebase questions.
 > tool-vs-resource design, capability negotiation, transport, and (the
 > differentiator) security boundaries around exposing a filesystem over a protocol.
 
-`93 tests, 0 skipped` · `Python 3.10+` · `MIT`
+`127 tests, 0 skipped` · `Python 3.10+` · `MIT`
 
 **[Architecture & security model →](ARCHITECTURE.md)** · **[Evaluation results →](eval/results.md)**
 
@@ -56,8 +56,8 @@ violation and asserts it fails** — security tested, not asserted.
 | Boundary | What it guarantees | Proven by |
 |---|---|---|
 | **Repo-root confinement** | resolves `..` *and* symlinks, then refuses anything outside the root | `tests/test_security_traversal.py` — 14 cases incl. symlink escape |
-| **Secrets deny-list** | `.env`, `*.key`, `*.pem`, `.git/`, `id_rsa`, … never read, searched, or listed | `tests/test_security_denylist.py` |
-| **Read-only posture** | no tool writes or executes; the server refuses to build if a non-read-only tool is registered | `tests/test_security_readonly.py` — incl. an AST scan for writes / `subprocess` |
+| **Secrets deny-list** | `.env`, `*.key`, `*.pem`, `.git/`, `id_rsa`, … never read, searched, or listed — matched on the *resolved* path, so a symlink like `notes.txt → .env` is refused too | `tests/test_security_denylist.py` |
+| **Read-only posture** | no tool writes or executes; the server refuses to build if a non-read-only tool is registered | `tests/test_security_readonly.py` — incl. a static scan for writes / `subprocess`, itself tested against 20 ways to write a file or start a process |
 | **Bounded output** | reads are line-range capped; search is paginated | `tests/test_tools.py` |
 
 The bundled [`sample-repo/`](sample-repo/) ships **intentionally fake** secrets
@@ -129,7 +129,7 @@ scans for writes and process spawning.
 ```bash
 git clone https://github.com/krishivsaini/Conduit.git && cd Conduit
 uv sync --extra dev
-uv run pytest                                     # 93 passed
+uv run pytest                                     # 127 passed
 uv run conduit-server --repo-root ./sample-repo   # the MCP server over stdio
 ```
 
@@ -148,6 +148,8 @@ tool-vs-resource rationale.
 ## Limitations (deliberate scope choices)
 
 - **Read-only** — no write / refactor / exec tools, by design (keeps the security surface tractable).
+- **The deny-list matches names, not contents** — it refuses files by path (`.env`, `*.key`, …). A secret pasted into an ordinarily named file such as `settings.py` is served like any other code. Keep secrets in files that match the deny-list, or extend it.
+- **The read-only scan is a strong check, not a proof** — it reads the code as written, so it cannot see through `getattr()`, names built at runtime, or a dependency that writes on the server's behalf. The startup guard is what actually stops a write tool from being exposed.
 - **Single server** — one server built deeply, not a multi-server hub.
 - **Lexical + symbolic search** — no semantic / vector RAG.
 - **`diff` is file-vs-file** — diffing git refs would require executing `git` as a subprocess, which the read-only/no-exec posture forbids.

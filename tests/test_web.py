@@ -252,6 +252,34 @@ def test_ask_returns_429_once_the_limit_is_reached(sample_repo):
     assert "error" in blocked.json()
 
 
+def _limited_app(sample_repo, client_ip_header=""):
+    app = create_app(host=DemoHost(sample_repo, provider="stub", adapter=StubAdapter([])))
+    app.state.limiter = RateLimiter(per_ip=1, per_ip_window=60, global_daily=100)
+    app.state.client_ip_header = client_ip_header
+    return TestClient(app)
+
+
+def test_a_forged_forwarded_header_does_not_buy_a_fresh_limit(sample_repo):
+    """X-Forwarded-For is client-writable: proxies append to it, they don't
+    replace it. Changing it per request must not reset the per-IP limit."""
+    client = _limited_app(sample_repo)
+    first = client.get("/api/ask", params={"q": "one"}, headers={"x-forwarded-for": "1.1.1.1"})
+    assert first.status_code == 200
+    forged = client.get("/api/ask", params={"q": "two"}, headers={"x-forwarded-for": "2.2.2.2"})
+    assert forged.status_code == 429
+
+
+def test_the_configured_proxy_header_identifies_visitors(sample_repo):
+    client = _limited_app(sample_repo, client_ip_header="cf-connecting-ip")
+    a = {"cf-connecting-ip": "203.0.113.7"}
+    b = {"cf-connecting-ip": "198.51.100.9"}
+    assert client.get("/api/ask", params={"q": "one"}, headers=a).status_code == 200
+    assert client.get("/api/ask", params={"q": "one"}, headers=b).status_code == 200  # a different visitor
+    # Same visitor, forged X-Forwarded-For: still the same bucket.
+    again = client.get("/api/ask", params={"q": "two"}, headers={**a, "x-forwarded-for": "9.9.9.9"})
+    assert again.status_code == 429
+
+
 def test_recorded_transcripts_are_not_rate_limited(sample_repo):
     """The static path must survive the live budget running out."""
     app = create_app(host=DemoHost(sample_repo, provider="stub", adapter=StubAdapter([])))
