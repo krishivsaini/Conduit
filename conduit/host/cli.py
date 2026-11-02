@@ -155,6 +155,11 @@ def _explain(provider: str, exc: Exception) -> str:
             "the Gemini free tier is rate limited (5 requests a minute, plus a daily "
             "cap). Wait a minute and retry, or use --provider ollama."
         )
+    if any(t in lowered for t in ("503", "unavailable", "overloaded", "high demand")):
+        return (
+            f"the {provider} service is temporarily overloaded (503). This is on the "
+            "provider's side: retry in a moment, or use --provider ollama."
+        )
     if provider == "ollama":
         if "not found" in lowered and ("model" in lowered or "404" in lowered):
             model = os.environ.get("OLLAMA_MODEL", "mistral")

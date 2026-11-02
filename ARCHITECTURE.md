@@ -66,8 +66,9 @@ plus a swappable LLM behind a single adapter interface:
 2. MCP capability negotiation → the client receives the tool/resource list
    FROM THE SERVER. The client hardcodes no tool names.
 3. User asks a question via the CLI.
-4. loop.run_turn passes the *discovered* tool schemas + the question to the
-   adapter (adapter.decide).
+4. loop.run_turn reads every resource the server advertises (repo://tree) and
+   puts it ahead of the question as context, then passes that plus the
+   *discovered* tool schemas to the adapter (adapter.decide).
 5. The adapter (Gemini/Ollama) returns a tool_call → the client invokes it
    over MCP → the server runs it through the security boundary → structured result.
 6. The result is fed back into the neutral message history; repeat 4–6.
@@ -79,6 +80,8 @@ The client is completely generic: add or rename a tool on the server and the
 unmodified client discovers and calls it. This is proven in
 `tests/test_dynamic_discovery.py` by spawning an *augmented* server with an
 extra tool the client has never heard of and calling it with zero client changes.
+Resources work the same way: the augmented server also adds a resource, and the
+unmodified host reads it and hands it to the model.
 
 ---
 
@@ -93,7 +96,11 @@ MCP distinguishes **tools** (actions the client invokes) from **resources**
 | **Resource** (context) | `repo_tree` (`repo://tree`) | A browsable, deny-listed view of the repo's shape for orientation — data, not an action. |
 
 Modeling `repo_tree` as a resource rather than "one more function call" is a
-deliberate signal of understanding the distinction.
+deliberate signal of understanding the distinction. The host uses it the way MCP
+intends: it reads the resource once per turn and gives it to the model as
+context (compacted, capped at 8,000 characters), so the model can go straight to
+a file instead of spending tool calls finding it. Deny-listed files are absent
+from it, so the tree never hints at where a secret lives.
 
 **Schema design:** every tool has a flat, typed input schema (Pydantic via
 `Annotated[..., Field(...)]`), structured output (a Pydantic return type →

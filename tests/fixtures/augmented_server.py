@@ -39,6 +39,13 @@ def main() -> None:
         """Return the input text reversed."""
         return text[::-1]
 
+    # Likewise a resource the host has never heard of: it should be read and
+    # attached as context without any host change.
+    @mcp.resource("notes://release", name="release_notes", mime_type="text/plain")
+    def release_notes() -> str:
+        """Release notes, only on this augmented server."""
+        return "Release 2.0 renamed charge() to bill()."
+
     mcp.run()
 
 

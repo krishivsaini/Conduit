@@ -17,7 +17,8 @@ from typing import Any
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from mcp.types import CallToolResult
+from mcp.types import CallToolResult, TextResourceContents
+from pydantic import AnyUrl
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,11 @@ class MCPCodebaseClient:
             DiscoveredResource(uri=str(r.uri), name=r.name, mime_type=r.mimeType)
             for r in result.resources
         ]
+
+    async def read_resource(self, uri: str) -> str:
+        """Read a resource's text contents (binary contents are skipped)."""
+        result = await self.session.read_resource(AnyUrl(uri))
+        return "\n".join(c.text for c in result.contents if isinstance(c, TextResourceContents))
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> CallToolResult:
         """Invoke a server tool by name over MCP and return its result."""

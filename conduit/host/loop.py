@@ -7,6 +7,7 @@ tool invocation so the CLI can make the MCP loop legible.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -59,6 +60,39 @@ class LoopResult:
     hit_step_limit: bool = False
 
 
+# Resources are context the server offers for the model to read, not actions to
+# call. Each is attached to the question, capped so a large repo can't flood it.
+MAX_RESOURCE_CHARS = 8000
+
+
+async def _resource_context(client: MCPCodebaseClient) -> str:
+    """Read every resource the server advertises, as context for the model.
+
+    Nothing about a particular resource is hardcoded: whatever the server lists
+    is attached, JSON is compacted, and a resource that fails to load is skipped
+    rather than failing the turn.
+    """
+    try:
+        resources = await client.discover_resources()
+    except Exception:  # noqa: BLE001 — context is optional; the tools still work
+        return ""
+    blocks = []
+    for r in resources:
+        try:
+            text = await client.read_resource(r.uri)
+        except Exception:  # noqa: BLE001
+            continue
+        if r.mime_type == "application/json":
+            try:
+                text = json.dumps(json.loads(text), separators=(",", ":"))
+            except ValueError:
+                pass
+        if len(text) > MAX_RESOURCE_CHARS:
+            text = text[:MAX_RESOURCE_CHARS] + " …[truncated]"
+        blocks.append(f"Resource {r.uri} ({r.name}):\n{text}")
+    return "\n\n".join(blocks)
+
+
 def _result_text(result: CallToolResult) -> str:
     """Flatten a tool result's text content (what we feed back to the model)."""
     parts = [getattr(c, "text", None) for c in result.content]
@@ -72,6 +106,7 @@ async def run_turn(
     *,
     max_steps: int = MAX_STEPS,
     on_step: Callable[[ToolInvocation], None] | None = None,
+    attach_resources: bool = True,
 ) -> LoopResult:
     """Answer one user message by discovering and driving the server's tools.
 
@@ -82,6 +117,10 @@ async def run_turn(
     ``on_step`` is an optional synchronous callback invoked with each
     ToolInvocation as it completes, so a caller can render the loop live rather
     than waiting for the turn to finish. Omitting it leaves behaviour unchanged.
+
+    ``attach_resources`` reads the server's advertised resources (here, the
+    repo's file tree) and puts them ahead of the question, so the model can go
+    straight to the right file instead of spending tool calls finding it.
     """
     discovered = await client.discover_tools()
     tool_schemas = [
@@ -89,7 +128,9 @@ async def run_turn(
         for t in discovered
     ]
 
-    messages: list[dict[str, Any]] = [{"role": "user", "content": user_message}]
+    context = await _resource_context(client) if attach_resources else ""
+    first = f"{context}\n\nQuestion: {user_message}" if context else user_message
+    messages: list[dict[str, Any]] = [{"role": "user", "content": first}]
     steps: list[ToolInvocation] = []
 
     for taken in range(max_steps):

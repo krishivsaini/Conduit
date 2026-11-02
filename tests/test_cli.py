@@ -168,6 +168,9 @@ def test_provider_errors_become_the_next_thing_to_do(monkeypatch):
         "ollama", ConnectionError("Failed to connect to Ollama."))
     assert "--provider ollama" in cli._explain(
         "gemini", Exception("429 RESOURCE_EXHAUSTED"))
+    overloaded = cli._explain("gemini", Exception(
+        "503 UNAVAILABLE. This model is currently experiencing high demand."))
+    assert "temporarily overloaded" in overloaded and "retry" in overloaded
 
 
 class FakeTerminal(io.StringIO):

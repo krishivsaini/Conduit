@@ -65,6 +65,16 @@ The bundled [`sample-repo/`](sample-repo/) ships **intentionally fake** secrets
 client-supplied paths flow through confine → deny-list **before** any read; there
 is no write/execute path anywhere in the server.
 
+**Prompt injection.** A repo can contain text written to manipulate the model
+reading it. The system prompt tells the model to treat file contents as data, but
+that's a request, not a guarantee. The guarantee is the server.
+[`tests/test_prompt_injection.py`](tests/test_prompt_injection.py) assumes the
+worst: a README carries an injection, the model obeys it completely and tries
+every route to a planted secret (by name, through a symlink, outside the root,
+by content, through `diff`), then pastes back everything it saw. The secret
+appears nowhere. The server can't stop the model *reading* the injection; it
+stops anything the injection asks for.
+
 ## Dynamic discovery
 
 The host hardcodes no tool list — it learns the server's tools at runtime via MCP
