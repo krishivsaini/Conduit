@@ -1,0 +1,60 @@
+{
+  "provider": "gemini",
+  "model": "gemini-3.5-flash",
+  "results": [
+    {
+      "question": "A user signs in with a valid username but the wrong password. What value does the sign-in / credential-verification function return in that case? Answer with a single word.",
+      "expected": "None",
+      "answer": "None",
+      "steps": 2,
+      "ok": true,
+      "error": null,
+      "date": "2026-08-18"
+    },
+    {
+      "question": "Which source file defines the function responsible for verifying a user's credentials? Answer with the repository-relative path.",
+      "expected": "src/auth.py",
+      "answer": "The function responsible for verifying a user's credentials is `authenticate`, defined in `src/auth.py`.",
+      "steps": 2,
+      "ok": true,
+      "error": null,
+      "date": "2026-08-18"
+    },
+    {
+      "question": "When an account is charged an amount below the allowed minimum, the charging function does not return a value \u2014 it raises an exception instead. Name the exception type it raises.",
+      "expected": "PaymentError",
+      "answer": "The exception type raised is **`PaymentError`** (defined in `src/payments.py`).",
+      "steps": 2,
+      "ok": true,
+      "error": null,
+      "date": "2026-08-18"
+    },
+    {
+      "question": "What is the smallest amount, in cents, that the payments module will allow for a charge? Answer with just the number.",
+      "expected": "50",
+      "answer": "50",
+      "steps": 2,
+      "ok": true,
+      "error": null,
+      "date": "2026-08-18"
+    },
+    {
+      "question": "Excluding classes and methods, how many top-level functions are defined in the payments source file? Answer with just the number.",
+      "expected": "2",
+      "answer": "2",
+      "steps": 2,
+      "ok": true,
+      "error": null,
+      "date": "2026-08-18"
+    },
+    {
+      "question": "The helper that masks sensitive strings leaves how many trailing characters visible? Answer with just the number.",
+      "expected": "2",
+      "answer": "2",
+      "steps": 4,
+      "ok": true,
+      "error": null,
+      "date": "2026-07-14"
+    }
+  ]
+}

@@ -1,21 +1,28 @@
 #!/usr/bin/env python3
 """Run the Conduit evaluation (§12) through Conduit's OWN host.
 
-Unlike a generic harness, this measures exactly what the project claims: that
-the model-agnostic host, driving the server's discovered tools, can answer
-realistic codebase questions. Each question is run through run_turn (default
-provider: gemini) and graded against the expected value by case-insensitive
-substring match. A Markdown report is written to eval/results.md.
+This measures exactly what the project claims: that the model-agnostic host,
+driving the server's discovered tools, answers realistic codebase questions.
 
-Free-tier quotas cap how many questions one day's run can execute, so results
-are **checkpointed** to eval/results.<provider>.json and runs **resume** by
-default: questions already executed are not re-asked (and don't re-burn quota),
-and a run stops as soon as the daily quota is exhausted rather than grinding
-through doomed retries.
+Grading is strict. Each question asks for a specific form (a number, a path,
+True/False, an exact string), and the model must end its reply with a line
+``ANSWER: <value>``. That value is compared to the expected answer exactly, after
+removing only formatting (surrounding backticks, quotes, bold, a trailing full
+stop, letter case). An expected "2" is not satisfied by "line 12" or "2 or 3".
 
-    uv run python eval/run_eval.py                    # gemini, resumes
-    uv run python eval/run_eval.py --provider ollama  # fully local
-    uv run python eval/run_eval.py --fresh            # ignore the checkpoint
+``--baseline`` asks the same model the same questions with **no tools and no
+repository context**. The gap between the two runs is what the server adds.
+
+Free-tier quotas cap how many questions a day's run can execute, so results are
+checkpointed to eval/results.<provider>[.baseline].json and runs resume: answered
+questions are not re-asked, and a run stops as soon as the quota is exhausted.
+Each checkpoint row keeps the full tool trace, so tests/test_replay.py replays
+real eval runs against the live server in CI, with no model calls.
+
+    uv run python eval/run_eval.py                      # gemini, with tools
+    uv run python eval/run_eval.py --baseline           # same model, no tools
+    uv run python eval/run_eval.py --questions 13 14    # a subset
+    uv run python eval/run_eval.py --provider ollama    # fully local
 """
 
 from __future__ import annotations
@@ -23,38 +30,94 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import time
+import re
+from dataclasses import asdict
 from datetime import date
 from pathlib import Path
+from typing import Any
 from xml.etree import ElementTree as ET
 
 from conduit.host.client import MCPCodebaseClient, conduit_server_params
-from conduit.host.llm.adapter import get_adapter
+from conduit.host.llm.adapter import Decision, LLMAdapter, Message, get_adapter
 from conduit.host.loop import run_turn
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Appended to every generated report: cross-provider context that is a stable
-# fact about the project, not a property of any single run.
+# Bump when grading changes. A checkpoint written under another rubric is not
+# resumed: its verdicts don't mean the same thing.
+RUBRIC = 2
+
+ANSWER_INSTRUCTION = (
+    " Be concise. When you are done, end your reply with a final line of the form "
+    "'ANSWER: <value>', with the value in exactly the form the question asks for."
+)
+
 FOOTER = """
-## Also verified: the fully-local path
+## How to read these numbers
 
-The same eval, same host, run against a local Ollama model (`--provider ollama`)
-completes **all 12 questions with real tool calls and no API key** — confirming
-the discover → call → respond loop and the server's tools work end-to-end
-offline. Final-answer accuracy there is low (1/12 on a 0.8B model, which usually
-hits the tool-step cap before synthesizing): that measures the *model*, not the
-server. The tool calls themselves were correct.
+The measure of an MCP server is whether a model can use it to answer real
+questions it could not answer alone. The **with tools** column is the full
+system: discovered tools, the repo tree as context, a step budget. The
+**baseline** column is the same model and prompt with no tools and no repo, so
+the gap between them is what the server contributes. Grading is exact (see the
+top of eval/run_eval.py), so a verbose answer that happens to contain the right
+number does not count.
 
-## Interpreting these numbers
+Questions 13–20 are multi-step: each needs evidence from more than one file, or
+reading past a misleading docstring. Every expected answer is checked against the
+sample repo's code actually executing, in tests/test_eval_answers.py.
 
-The measure of an MCP server is whether an LLM can use it to answer real
-questions. On a capable model every executed question was answered correctly
-from tool evidence, with citations. The only cap is the Gemini free-tier daily
-quota, which limits how many questions one day's run can execute — runs are
-checkpointed and resume, so repeating the command on a later day completes the
-remainder without re-asking what's already answered.
+The Gemini free tier allows about 5 requests a minute and a small daily cap, so
+a full run can span days. Runs resume where they stopped; *pending* rows were
+never sent to the model and are not scored. Results recorded under the earlier,
+lenient substring rubric are kept in eval/results.gemini.v1.json.
 """
+
+# Captures an optional bold opener, an optional bold closer before the colon, and
+# everything after the colon.
+_ANSWER_LINE = re.compile(r"^[\s>]*(\*\*|__)?\s*answer\s*(\*\*|__)?\s*:(.*)$", re.IGNORECASE | re.MULTILINE)
+_PAIRED = ("**", "__", "`", '"', "'")
+
+
+def extract_answer(reply: str) -> str | None:
+    """The value on the last 'ANSWER:' line of a reply, or None if there is none.
+
+    Models bold the label in different places: "**ANSWER:** x" closes the bold
+    after the colon, "**ANSWER: x**" around the whole line. Only that label
+    markup is removed here, so asterisks belonging to the value ("*****r2") stay.
+    """
+    found = _ANSWER_LINE.findall(reply or "")
+    if not found:
+        return None
+    opening, closing, value = found[-1]
+    value = value.strip()
+    if opening and not closing:
+        if value.startswith(opening):
+            value = value[len(opening):].strip()
+        elif value.endswith(opening):
+            value = value[: -len(opening)].strip()
+    return value or None
+
+
+def normalize(value: str) -> str:
+    """Strip formatting, not content: wrapping markup, a final full stop, case."""
+    v = " ".join(value.split())
+    changed = True
+    while changed:
+        changed = False
+        for mark in _PAIRED:
+            n = len(mark)
+            if len(v) > 2 * n and v.startswith(mark) and v.endswith(mark):
+                v, changed = v[n:-n].strip(), True
+    if v.endswith(".") and not v.endswith(".."):
+        v = v[:-1].rstrip()
+    return v.casefold()
+
+
+def grade(expected: str, reply: str) -> tuple[bool, str | None]:
+    """Exact match of the reply's ANSWER line against the expected value."""
+    got = extract_answer(reply)
+    return (got is not None and normalize(got) == normalize(expected)), got
 
 
 def _load_env() -> None:
@@ -77,128 +140,176 @@ def parse_pairs(eval_file: Path) -> list[tuple[str, str]]:
     return pairs
 
 
-def grade(expected: str, answer: str) -> bool:
-    """Direct (lenient) string comparison: expected appears in the answer."""
-    return expected.strip().lower() in (answer or "").lower()
+class NoTools(LLMAdapter):
+    """The baseline: the same model, offered no tools."""
+
+    def __init__(self, inner: LLMAdapter) -> None:
+        self.inner = inner
+        self.model = getattr(inner, "model", None)
+
+    async def decide(self, messages: list[Message], tool_schemas: list[dict[str, Any]]) -> Decision:
+        return await self.inner.decide(messages, [])
 
 
 def _is_rate_limit(err: str) -> bool:
     return any(t in err.lower() for t in ("429", "resource_exhausted", "quota", "rate limit"))
 
 
-async def _ask(client, adapter, question: str) -> tuple[str, int, str | None]:
-    """Ask one question, retrying transient errors. Returns (answer, steps, error)."""
+async def _ask(client, adapter, question: str, baseline: bool) -> dict[str, Any]:
+    """One question, retrying transient errors. Returns reply, steps and error."""
     err = None
     for attempt in range(4):
         try:
-            result = await run_turn(client, adapter, question + " Be concise.")
-            return result.answer.strip(), len(result.steps), None
+            result = await run_turn(
+                client, adapter, question + ANSWER_INSTRUCTION,
+                max_steps=1 if baseline else 8, attach_resources=not baseline,
+            )
+            return {"reply": result.answer.strip(), "steps": [asdict(s) for s in result.steps], "error": None}
         except Exception as e:  # noqa: BLE001 — provider/API errors
             err = str(e)
             if _is_rate_limit(err):
-                # One cool-down in case it's a per-minute (not daily) limit.
-                if attempt == 0:
+                if attempt == 0:          # one cool-down, in case it's the per-minute limit
                     await asyncio.sleep(45)
                     continue
-                break  # daily quota — stop retrying
+                break                     # daily quota — stop retrying
             await asyncio.sleep(3 * (attempt + 1))
-    return "", 0, err
+    return {"reply": "", "steps": [], "error": err}
 
 
-async def run(provider: str, repo_root: str, eval_file: Path, output: Path, delay: float, fresh: bool) -> None:
+def _checkpoint_path(output: Path, provider: str, baseline: bool) -> Path:
+    return output.with_name(f"results.{provider}{'.baseline' if baseline else ''}.json")
+
+
+def load_checkpoint(path: Path) -> dict[str, dict]:
+    """Rows by question, from a checkpoint written under the current rubric."""
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text())
+    if data.get("rubric") != RUBRIC:
+        return {}
+    return {r["question"]: r for r in data["results"]}
+
+
+async def run(
+    provider: str, repo_root: str, eval_file: Path, output: Path, delay: float,
+    fresh: bool, baseline: bool, only: set[int] | None, adapter: LLMAdapter | None = None,
+) -> None:
     pairs = parse_pairs(eval_file)
-    adapter = get_adapter(provider)
-    model = getattr(adapter, "model", provider)
-    checkpoint = output.with_name(f"results.{provider}.json")
+    base = adapter or get_adapter(provider)
+    model = getattr(base, "model", provider)
+    runner = NoTools(base) if baseline else base
+    checkpoint = _checkpoint_path(output, provider, baseline)
 
-    done: dict[str, dict] = {}
-    if not fresh and checkpoint.exists():
-        done = {r["question"]: r for r in json.loads(checkpoint.read_text())["results"]}
-        if done:
-            print(f"resuming: {len(done)} question(s) already executed (from {checkpoint.name})\n")
+    done = {} if fresh else load_checkpoint(checkpoint)
+    if done:
+        print(f"resuming: {len(done)} question(s) already answered (from {checkpoint.name})\n")
 
     quota_hit = False
     async with MCPCodebaseClient(conduit_server_params(repo_root)) as client:
         for i, (question, expected) in enumerate(pairs, 1):
+            if only and i not in only:
+                continue
             if question in done:
-                r = done[question]
-                print(f"[{i:2}/{len(pairs)}] {'PASS' if r['ok'] else 'FAIL'}  (cached from {r['date']})")
+                print(f"[{i:2}] {'PASS' if done[question]['ok'] else 'FAIL'}  (cached from {done[question]['date']})")
                 continue
             if quota_hit:
-                print(f"[{i:2}/{len(pairs)}] SKIP   quota exhausted — re-run to continue")
+                print(f"[{i:2}] SKIP  quota exhausted — re-run to continue")
                 continue
 
-            answer, steps, err = await _ask(client, adapter, question)
-            if err and _is_rate_limit(err):
+            r = await _ask(client, runner, question, baseline)
+            if r["error"] and _is_rate_limit(r["error"]):
                 quota_hit = True
-                print(f"[{i:2}/{len(pairs)}] SKIP   quota exhausted — re-run to continue")
+                print(f"[{i:2}] SKIP  quota exhausted — re-run to continue")
                 continue
 
-            ok = grade(expected, answer)
+            ok, got = grade(expected, r["reply"])
             done[question] = {
-                "question": question, "expected": expected, "answer": answer,
-                "steps": steps, "ok": ok, "error": err, "date": date.today().isoformat(),
+                "index": i, "question": question, "expected": expected, "answer": got,
+                "reply": r["reply"], "steps": r["steps"], "ok": ok, "error": r["error"],
+                "model": model, "date": date.today().isoformat(),
             }
-            checkpoint.write_text(json.dumps({"provider": provider, "model": model,
-                                              "results": list(done.values())}, indent=2))
-            note = "" if not err else f"  [error: {err[:70]}]"
-            print(f"[{i:2}/{len(pairs)}] {'PASS' if ok else 'FAIL'}  expected={expected!r}  ({steps} tool calls){note}")
+            checkpoint.write_text(json.dumps(
+                {"provider": provider, "model": model, "rubric": RUBRIC, "baseline": baseline,
+                 "results": list(done.values())}, indent=2))
+            note = f"  [error: {r['error'][:70]}]" if r["error"] else ""
+            print(f"[{i:2}] {'PASS' if ok else 'FAIL'}  expected={expected!r} got={got!r} "
+                  f"({len(r['steps'])} tool calls){note}")
             await asyncio.sleep(delay)
 
-    rows = [(i, q, e, done.get(q)) for i, (q, e) in enumerate(pairs, 1)]
-    executed = [r for _, _, _, r in rows if r]
-    passed = sum(1 for r in executed if r["ok"])
-    _write_report(output, provider, model, rows, passed, len(executed))
-    pending = len(pairs) - len(executed)
-    tail = f"  ({pending} pending — re-run after the quota resets)" if pending else ""
-    print(f"\nExecuted: {passed}/{len(executed)} correct{tail}  ->  {output}")
+    write_report(output, provider, eval_file)
 
 
-def _write_report(output: Path, provider: str, model: str, rows, passed: int, executed: int) -> None:
-    total = len(rows)
-    pct = f"{100 * passed // executed}%" if executed else "n/a"
+def write_report(output: Path, provider: str, eval_file: Path) -> None:
+    """Rebuild results.md from both checkpoints (with tools, and baseline)."""
+    pairs = parse_pairs(eval_file)
+    tools = load_checkpoint(_checkpoint_path(output, provider, False))
+    base = load_checkpoint(_checkpoint_path(output, provider, True))
+
+    def score(rows: dict[str, dict]) -> str:
+        if not rows:
+            return "not run"
+        ok = sum(r["ok"] for r in rows.values())
+        return f"{ok}/{len(rows)} ({100 * ok // len(rows)}%)"
+
+    def cell(r: dict | None) -> str:
+        if r is None:
+            return "⏳"
+        if r.get("error") and not r.get("reply"):
+            return "⚠️ error"
+        return "✅" if r["ok"] else "❌"
+
+    def shown(r: dict | None) -> str:
+        if r is None:
+            return "—"
+        v = (r.get("answer") or "_(no ANSWER line)_").replace("|", "\\|")
+        return v if len(v) <= 40 else v[:37] + "…"
+
+    models = sorted({r["model"] for r in [*tools.values(), *base.values()] if r.get("model")})
+    calls = [len(r["steps"]) for r in tools.values() if r.get("reply")]
     lines = [
         "# Conduit evaluation results",
         "",
-        f"- **Date:** {date.today().isoformat()}",
-        f"- **Provider / model:** {provider} / {model}",
-        "- **Server target:** `sample-repo/`",
-        f"- **Executed accuracy:** {passed}/{executed} ({pct}) — of {total} questions",
+        f"- **Updated:** {date.today().isoformat()} · **Provider / model:** {provider} / {', '.join(models) or '—'}",
+        f"- **Questions:** {len(pairs)} (1–12 single-step, 13–20 multi-step) · **Server target:** `sample-repo/`",
+        f"- **With tools:** {score(tools)} of questions answered so far",
+        f"- **Baseline (same model, no tools):** {score(base)}",
+        f"- **Mean tool calls per answered question:** {sum(calls) / len(calls):.1f}" if calls else
+        "- **Mean tool calls per answered question:** —",
         "",
-        "Each question is answered through Conduit's own host: the client discovers the",
-        "server's tools at runtime and drives them, and the final answer is graded by",
-        "case-insensitive substring match. Questions marked *pending* were never sent to",
-        "the model (free-tier daily quota); re-running resumes where it left off.",
+        "Graded strictly: the reply's `ANSWER:` line must equal the expected value exactly, "
+        "ignoring only formatting. ⏳ = not yet sent to the model (quota).",
         "",
-        "| # | Expected | Model answer | Tool calls | Result |",
-        "|---|---|---|---|---|",
+        "| # | Expected | With tools | Calls | ✓ | Baseline | ✓ |",
+        "|---|---|---|---|---|---|---|",
     ]
-    for i, _q, expected, r in rows:
-        if not r:
-            lines.append(f"| {i} | `{expected}` | — | — | ⏳ pending (quota) |")
-            continue
-        got = (r["answer"] or "").replace("\n", " ").replace("|", "\\|")
-        if not got and r.get("error"):
-            got = f"_(error: {r['error'][:60]})_"
-        if len(got) > 80:
-            got = got[:77] + "…"
-        lines.append(f"| {i} | `{expected}` | {got} | {r['steps']} | {'✅' if r['ok'] else '❌'} |")
+    for i, (q, expected) in enumerate(pairs, 1):
+        t, b = tools.get(q), base.get(q)
+        n = str(len(t["steps"])) if t and t.get("reply") else "—"
+        lines.append(f"| {i} | `{expected}` | {shown(t)} | {n} | {cell(t)} | {shown(b)} | {cell(b)} |")
     lines.append(FOOTER)
     output.write_text("\n".join(lines), encoding="utf-8")
+    print(f"\nwith tools: {score(tools)} · baseline: {score(base)}  ->  {output}")
 
 
 def main() -> None:
     _load_env()
     parser = argparse.ArgumentParser(description="Run the Conduit evaluation through the host")
     parser.add_argument("--provider", default="gemini", help="gemini | ollama")
+    parser.add_argument("--baseline", action="store_true", help="Same model, no tools, no repo context")
+    parser.add_argument("--questions", type=int, nargs="+", help="Only these question numbers")
     parser.add_argument("--repo-root", default=str(REPO_ROOT / "sample-repo"))
     parser.add_argument("--eval-file", default=str(REPO_ROOT / "eval" / "evaluation.xml"))
     parser.add_argument("--output", default=str(REPO_ROOT / "eval" / "results.md"))
-    parser.add_argument("--delay", type=float, default=6.0, help="Seconds between questions")
+    parser.add_argument("--delay", type=float, default=13.0,
+                        help="Seconds between questions (the free tier allows ~5 requests a minute)")
     parser.add_argument("--fresh", action="store_true", help="Ignore the checkpoint and re-ask everything")
+    parser.add_argument("--report-only", action="store_true", help="Rebuild results.md from checkpoints")
     args = parser.parse_args()
-    asyncio.run(run(args.provider, args.repo_root, Path(args.eval_file),
-                    Path(args.output), args.delay, args.fresh))
+    if args.report_only:
+        write_report(Path(args.output), args.provider, Path(args.eval_file))
+        return
+    asyncio.run(run(args.provider, args.repo_root, Path(args.eval_file), Path(args.output),
+                    args.delay, args.fresh, args.baseline, set(args.questions or []) or None))
 
 
 if __name__ == "__main__":

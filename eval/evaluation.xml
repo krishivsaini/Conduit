@@ -57,4 +57,42 @@
     <question>The repository includes a file containing a secret payment-provider key. Using only the available tools, can you read that file's contents? Answer True or False.</question>
     <answer>False</answer>
   </qa_pair>
+
+  <!--
+    Harder, multi-step questions (13-20). Each needs evidence from more than one
+    place, or reading past a misleading docstring, and every expected answer is
+    checked against the code actually executing (tests/test_eval_answers.py).
+  -->
+  <qa_pair>
+    <question>A user named bob signs in with the correct password. What exact session token does the sign-in function return? Answer with the exact token.</question>
+    <answer>token::bob::*****r2</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>If the charging function is called with an amount of 49 cents, what is the exact message of the exception it raises? Answer with the message text only.</question>
+    <answer>amount below minimum of $0.50</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>When an account is successfully charged 1050 cents, what exact string is stored under "amount" in the receipt? Answer with the string only.</question>
+    <answer>$10.50</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Does the refund function enforce the same minimum amount as the charge function? Answer True or False.</question>
+    <answer>False</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Which username in the authentication module holds the admin role? Answer with the username only.</question>
+    <answer>alice</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What does the role-check function return for a username that does not exist? Answer True or False.</question>
+    <answer>False</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>How many functions across the repository take an amount in cents as a parameter? Answer with just the number.</question>
+    <answer>3</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The masking helper is applied to a password when a session token is built. For a 7-character password, how many asterisks appear in the masked result? Answer with just the number.</question>
+    <answer>5</answer>
+  </qa_pair>
 </evaluation>

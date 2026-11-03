@@ -18,12 +18,27 @@ from conduit.host.client import MCPCodebaseClient, conduit_server_params
 from conduit.host.llm.replay import ReplayAdapter, ReplayDivergence
 from conduit.host.loop import run_turn
 
-TRANSCRIPTS = json.loads(
-    (Path(__file__).resolve().parents[1] / "conduit" / "web" / "static" / "transcripts.json").read_text()
-)["transcripts"]
+ROOT = Path(__file__).resolve().parents[1]
+TRANSCRIPTS = json.loads((ROOT / "conduit" / "web" / "static" / "transcripts.json").read_text())["transcripts"]
 
 
-@pytest.mark.parametrize("transcript", TRANSCRIPTS, ids=lambda t: f"eval-q{t['index']}")
+def _eval_runs() -> list[dict]:
+    """Real eval runs that recorded a trace (eval/results.gemini.json)."""
+    from tests.eval_helpers import load_run_eval
+
+    rows = load_run_eval().load_checkpoint(ROOT / "eval" / "results.gemini.json").values()
+    return [r for r in rows if r.get("reply") and not r.get("error")]
+
+
+# The demo's recorded runs, plus every real eval run that kept its tool trace.
+CASES = [pytest.param(t, id=f"demo-q{t['index']}") for t in TRANSCRIPTS] + [
+    pytest.param({"question": r["question"], "steps": r["steps"], "answer": r["reply"]},
+                 id=f"eval-q{r['index']}")
+    for r in _eval_runs()
+]
+
+
+@pytest.mark.parametrize("transcript", CASES)
 async def test_recorded_run_replays_identically(sample_repo, transcript):
     async with MCPCodebaseClient(conduit_server_params(sample_repo)) as client:
         result = await run_turn(client, ReplayAdapter(transcript), transcript["question"])
@@ -32,7 +47,8 @@ async def test_recorded_run_replays_identically(sample_repo, transcript):
         (s["name"], s["arguments"]) for s in transcript["steps"]
     ]
     assert result.answer == transcript["answer"]
-    assert transcript["expected"].lower() in result.answer.lower()
+    if "expected" in transcript:  # the demo labels its runs as matching the key
+        assert transcript["expected"].lower() in result.answer.lower()
 
 
 async def test_replay_notices_when_the_server_changes(sample_repo, tmp_path):
@@ -45,7 +61,10 @@ async def test_replay_notices_when_the_server_changes(sample_repo, tmp_path):
         if path.is_file():
             dest = changed / path.relative_to(sample_repo)
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(path.read_text() + "\n# edited after the recording\n")
+            data = path.read_bytes()
+            if path.suffix in {".py", ".md"}:
+                data += b"\n# edited after the recording\n"
+            dest.write_bytes(data)
 
     with pytest.raises(ReplayDivergence, match="diverged from the recording"):
         async with MCPCodebaseClient(conduit_server_params(changed)) as client:

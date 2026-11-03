@@ -92,16 +92,37 @@ Swapping providers changes one env var, no loop code.
 
 ## Evaluation
 
-[`eval/evaluation.xml`](eval/evaluation.xml) holds 12 realistic, verifiable,
-read-only questions answered by driving the server's tools. Run through
-Conduit's own host, **a capable model (Gemini) answered every question it
-executed correctly** (6/6 before the free-tier daily quota capped that day's run),
-and the whole discover→call→respond loop runs **fully offline** via a local model.
-Methodology + full table: [`eval/results.md`](eval/results.md). Re-run any time:
+[`eval/evaluation.xml`](eval/evaluation.xml) holds 20 read-only questions about
+the sample repo. Questions 13–20 take more than one step: following a call
+across files, working out what a function returns for a given input, or
+noticing that a docstring is wrong (`refund` says it "mirrors charge
+validation", but it accepts 10 cents).
+
+- **Strict grading.** The model must end with an `ANSWER: <value>` line, and the
+  value has to match exactly once formatting is normalised. An expected `2` is
+  not satisfied by "12" or by "2 or 3". The grader has its own tests
+  ([`tests/test_eval_runner.py`](tests/test_eval_runner.py)).
+- **An answer key checked against the code.**
+  [`tests/test_eval_answers.py`](tests/test_eval_answers.py) imports the sample
+  repo, runs it, and checks every expected answer against what the code actually
+  does. A typo in the key fails CI instead of mis-grading a model.
+- **A baseline.** `--baseline` asks the same questions with no tools, so the
+  results show what the server adds, not just what the model already knows.
+- **Recorded traces.** Each run keeps its full tool trace, and CI replays it
+  against the live server ([`tests/test_replay.py`](tests/test_replay.py)).
+
+**Results so far (Gemini, strict rubric):** 5/5 on multi-step questions 13–17,
+using 1–2 tool calls each. The free-tier daily quota ran out before the rest, and
+the baseline hasn't been run yet. The runner resumes where it stopped, so
+[`eval/results.md`](eval/results.md) fills in over later runs. The earlier
+12-question run, graded with a lenient substring check, is kept in
+[`eval/results.gemini.v1.json`](eval/results.gemini.v1.json).
 
 ```bash
-uv run python eval/run_eval.py                    # gemini
-uv run python eval/run_eval.py --provider ollama  # fully local
+uv run python eval/run_eval.py                      # gemini; resumes a partial run
+uv run python eval/run_eval.py --baseline           # same questions, no tools
+uv run python eval/run_eval.py --questions 18 19 20 # only these
+uv run python eval/run_eval.py --provider ollama    # fully local
 ```
 
 ## Web demo
