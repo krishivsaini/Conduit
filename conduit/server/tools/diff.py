@@ -69,8 +69,8 @@ def register(mcp: FastMCP, config: ServerConfig) -> None:
             lines.
         """
         try:
-            _, a_lines = read_text_file(repo_root, a)
-            _, b_lines = read_text_file(repo_root, b)
+            _, a_lines = read_text_file(repo_root, a, config.deny_patterns)
+            _, b_lines = read_text_file(repo_root, b, config.deny_patterns)
         except ActionableError as e:
             raise to_tool_error(e)
 

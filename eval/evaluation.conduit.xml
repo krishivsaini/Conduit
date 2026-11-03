@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The same kind of evaluation as evaluation.xml, run against a real repository:
+  this one. The server serves the Conduit checkout itself (with .gitignore
+  respected): a common term matches hundreds of lines, there are hundreds of
+  symbols, and the tree only just fits its size budget. eval/ is added to the
+  deny-list for the run, so the model cannot find this answer key.
+
+  Questions describe a behaviour, not where it lives: the model has to find the
+  code. Every expected answer is recomputed from the code itself by
+  tests/test_eval_answers.py, so a change to Conduit that changes an answer fails
+  CI until the key is updated. Run it with the runner's "conduit" suite (see eval/run_eval.py).
+-->
+<evaluation>
+  <qa_pair>
+    <question>In this repository's host, what is the default maximum number of tool calls the model may make while answering one question? Answer with just the number.</question>
+    <answer>8</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>When a recorded model run is replayed and a tool now returns something different from the recording, which exception class is raised? Answer with just the class name.</question>
+    <answer>ReplayDivergence</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Which file defines the function that confines a client-supplied path to the served repository root? Answer with the repository-relative path.</question>
+    <answer>conduit/server/security/boundary.py</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Files larger than a certain size are skipped when the server indexes a repository. What is that limit in bytes? Answer with just the number, with no separators.</question>
+    <answer>1000000</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Which environment variable tells the web demo which HTTP header to trust for a visitor's IP address? Answer with just the variable name.</question>
+    <answer>CONDUIT_CLIENT_IP_HEADER</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>How many methods, counting __init__ and private ones, are defined directly in the body of the class that indexes the served repository? Answer with just the number.</question>
+    <answer>7</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Before the first question, the host attaches the server's resources to the model's context, truncating each one past a limit. What is that limit, in characters? Answer with just the number.</question>
+    <answer>8000</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Of the server's default secrets deny-list patterns, which one denies a directory rather than a file? Answer with the pattern exactly as written in the code.</question>
+    <answer>.git/</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>How many modules in the server's tools package define a function named register? Answer with just the number.</question>
+    <answer>4</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What HTTP status code does the web demo return when a visitor has used up their question allowance? Answer with just the number.</question>
+    <answer>429</answer>
+  </qa_pair>
+</evaluation>

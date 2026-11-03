@@ -1,6 +1,6 @@
 """Gemini adapter (free tier, default) — implements LLMAdapter via google-genai.
 
-Model: gemini-3.5-flash (verified current on Day 1). Declares the discovered
+Model: gemini-3.6-flash by default (override with GEMINI_MODEL). Declares the discovered
 tool schemas as Gemini function declarations (passing our Pydantic JSON-Schema
 straight through ``parameters_json_schema``) and reads back the model's
 function calls. Automatic function calling is disabled — *we* drive the loop.
@@ -17,9 +17,9 @@ from typing import Any
 from google import genai
 from google.genai import types
 
-from .adapter import Decision, FinalAnswer, LLMAdapter, Message, SYSTEM_PROMPT, ToolCall
+from .adapter import Decision, FinalAnswer, LLMAdapter, Message, ToolCall
 
-DEFAULT_MODEL = "gemini-3.5-flash"
+DEFAULT_MODEL = "gemini-3.6-flash"
 
 
 class GeminiAdapter(LLMAdapter):
@@ -46,7 +46,7 @@ class GeminiAdapter(LLMAdapter):
         # final answer once the tool budget is spent. An empty function
         # declaration list is not valid, so drop the tools config entirely.
         config = types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
+            system_instruction=self.system_prompt,
             tools=[_to_tool(tool_schemas)] if tool_schemas else None,
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )

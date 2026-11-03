@@ -23,6 +23,14 @@ real eval runs against the live server in CI, with no model calls.
     uv run python eval/run_eval.py --baseline           # same model, no tools
     uv run python eval/run_eval.py --questions 13 14    # a subset
     uv run python eval/run_eval.py --provider ollama    # fully local
+    uv run python eval/run_eval.py --suite conduit      # a real repo: this one
+
+Two suites. ``sample`` (the default) asks about the frozen three-file
+sample-repo/. ``conduit`` serves this checkout, a real repository with hundreds
+of symbols and a tree too big to list whole, and puts eval/ on the server's
+deny-list so the model can't read the answer key. Conduit changes with every
+commit, so conduit-suite traces are kept for reading but not replayed in CI;
+the answer key is kept honest by tests/test_eval_answers.py instead.
 """
 
 from __future__ import annotations
@@ -31,7 +39,7 @@ import argparse
 import asyncio
 import json
 import re
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -39,9 +47,36 @@ from xml.etree import ElementTree as ET
 
 from conduit.host.client import MCPCodebaseClient, conduit_server_params
 from conduit.host.llm.adapter import Decision, LLMAdapter, Message, get_adapter
+from conduit.host.llm.pacing import Paced, per_minute_wait  # noqa: F401 — re-exported for tests
 from conduit.host.loop import run_turn
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+@dataclass(frozen=True)
+class Suite:
+    """A question set, the repo it is asked about, and where results go."""
+
+    name: str
+    repo_root: Path
+    eval_file: Path
+    output: Path
+    target: str  # how the report names the served repo
+    shape: str  # how the report describes the questions
+    deny: tuple[str, ...] = ()
+
+
+SUITES = {
+    "sample": Suite(
+        "sample", REPO_ROOT / "sample-repo", REPO_ROOT / "eval" / "evaluation.xml",
+        REPO_ROOT / "eval" / "results.md", "`sample-repo/`", "1–12 single-step, 13–20 multi-step",
+    ),
+    "conduit": Suite(
+        "conduit", REPO_ROOT, REPO_ROOT / "eval" / "evaluation.conduit.xml",
+        REPO_ROOT / "eval" / "results.conduit.md", "this repository (Conduit itself, `eval/` denied)",
+        "each asks about a behaviour, so the code has to be found", deny=("eval/",),
+    ),
+}
 
 # Bump when grading changes. A checkpoint written under another rubric is not
 # resumed: its verdicts don't mean the same thing.
@@ -71,6 +106,21 @@ The Gemini free tier allows about 5 requests a minute and a small daily cap, so
 a full run can span days. Runs resume where they stopped; *pending* rows were
 never sent to the model and are not scored. Results recorded under the earlier,
 lenient substring rubric are kept in eval/results.gemini.v1.json.
+"""
+
+CONDUIT_FOOTER = """
+## How to read these numbers
+
+This suite serves a real repository, this one, instead of the frozen sample:
+a common term matches hundreds of lines, there are hundreds of symbols, and the
+repo tree only just fits its size budget (larger repos get it collapsed). `eval/` is on the server's deny-list for
+the run, so the answer key can't be read. Columns mean the same as in
+eval/results.md.
+
+Conduit changes with every commit, so these traces aren't replayed in CI (the
+sample suite's are). Instead tests/test_eval_answers.py recomputes every expected
+answer from the code, so a change that alters an answer fails CI until the key
+is updated.
 """
 
 # Captures an optional bold opener, an optional bold closer before the colon, and
@@ -140,12 +190,25 @@ def parse_pairs(eval_file: Path) -> list[tuple[str, str]]:
     return pairs
 
 
+BASELINE_SYSTEM_PROMPT = (
+    "You are answering questions about a code repository, but you have no tools and "
+    "cannot see the repository. Answer from your own knowledge. If you are not sure, "
+    "give your best guess rather than declining: a guess is scored like any other answer."
+)
+
+
 class NoTools(LLMAdapter):
-    """The baseline: the same model, offered no tools."""
+    """The baseline: the same model, offered no tools, and told so.
+
+    The host's usual system prompt says to answer from tool evidence. With no
+    tools offered, a model following it announces a search and stops, which
+    would score the prompt, not the model's knowledge.
+    """
 
     def __init__(self, inner: LLMAdapter) -> None:
         self.inner = inner
         self.model = getattr(inner, "model", None)
+        inner.system_prompt = BASELINE_SYSTEM_PROMPT
 
     async def decide(self, messages: list[Message], tool_schemas: list[dict[str, Any]]) -> Decision:
         return await self.inner.decide(messages, [])
@@ -153,6 +216,8 @@ class NoTools(LLMAdapter):
 
 def _is_rate_limit(err: str) -> bool:
     return any(t in err.lower() for t in ("429", "resource_exhausted", "quota", "rate limit"))
+
+
 
 
 async def _ask(client, adapter, question: str, baseline: bool) -> dict[str, Any]:
@@ -177,7 +242,8 @@ async def _ask(client, adapter, question: str, baseline: bool) -> dict[str, Any]
 
 
 def _checkpoint_path(output: Path, provider: str, baseline: bool) -> Path:
-    return output.with_name(f"results.{provider}{'.baseline' if baseline else ''}.json")
+    """results.md -> results.<provider>[.baseline].json; results.conduit.md -> results.conduit.<...>."""
+    return output.with_name(f"{output.stem}.{provider}{'.baseline' if baseline else ''}.json")
 
 
 def load_checkpoint(path: Path) -> dict[str, dict]:
@@ -193,11 +259,12 @@ def load_checkpoint(path: Path) -> dict[str, dict]:
 async def run(
     provider: str, repo_root: str, eval_file: Path, output: Path, delay: float,
     fresh: bool, baseline: bool, only: set[int] | None, adapter: LLMAdapter | None = None,
+    suite: Suite = SUITES["sample"], rpm: float = 0,
 ) -> None:
     pairs = parse_pairs(eval_file)
     base = adapter or get_adapter(provider)
     model = getattr(base, "model", provider)
-    runner = NoTools(base) if baseline else base
+    runner = Paced(NoTools(base) if baseline else base, rpm)
     checkpoint = _checkpoint_path(output, provider, baseline)
 
     done = {} if fresh else load_checkpoint(checkpoint)
@@ -205,7 +272,7 @@ async def run(
         print(f"resuming: {len(done)} question(s) already answered (from {checkpoint.name})\n")
 
     quota_hit = False
-    async with MCPCodebaseClient(conduit_server_params(repo_root)) as client:
+    async with MCPCodebaseClient(conduit_server_params(repo_root, deny=suite.deny)) as client:
         for i, (question, expected) in enumerate(pairs, 1):
             if only and i not in only:
                 continue
@@ -236,10 +303,10 @@ async def run(
                   f"({len(r['steps'])} tool calls){note}")
             await asyncio.sleep(delay)
 
-    write_report(output, provider, eval_file)
+    write_report(output, provider, eval_file, suite)
 
 
-def write_report(output: Path, provider: str, eval_file: Path) -> None:
+def write_report(output: Path, provider: str, eval_file: Path, suite: Suite = SUITES["sample"]) -> None:
     """Rebuild results.md from both checkpoints (with tools, and baseline)."""
     pairs = parse_pairs(eval_file)
     tools = load_checkpoint(_checkpoint_path(output, provider, False))
@@ -270,8 +337,8 @@ def write_report(output: Path, provider: str, eval_file: Path) -> None:
         "# Conduit evaluation results",
         "",
         f"- **Updated:** {date.today().isoformat()} · **Provider / model:** {provider} / {', '.join(models) or '—'}",
-        f"- **Questions:** {len(pairs)} (1–12 single-step, 13–20 multi-step) · **Server target:** `sample-repo/`",
-        f"- **With tools:** {score(tools)} of questions answered so far",
+        f"- **Questions:** {len(pairs)} ({suite.shape}) · **Server target:** {suite.target}",
+        f"- **With tools:** {score(tools)}" + (" of questions answered so far" if 0 < len(tools) < len(pairs) else ""),
         f"- **Baseline (same model, no tools):** {score(base)}",
         f"- **Mean tool calls per answered question:** {sum(calls) / len(calls):.1f}" if calls else
         "- **Mean tool calls per answered question:** —",
@@ -286,7 +353,7 @@ def write_report(output: Path, provider: str, eval_file: Path) -> None:
         t, b = tools.get(q), base.get(q)
         n = str(len(t["steps"])) if t and t.get("reply") else "—"
         lines.append(f"| {i} | `{expected}` | {shown(t)} | {n} | {cell(t)} | {shown(b)} | {cell(b)} |")
-    lines.append(FOOTER)
+    lines.append(FOOTER if suite.name == "sample" else CONDUIT_FOOTER)
     output.write_text("\n".join(lines), encoding="utf-8")
     print(f"\nwith tools: {score(tools)} · baseline: {score(base)}  ->  {output}")
 
@@ -297,19 +364,27 @@ def main() -> None:
     parser.add_argument("--provider", default="gemini", help="gemini | ollama")
     parser.add_argument("--baseline", action="store_true", help="Same model, no tools, no repo context")
     parser.add_argument("--questions", type=int, nargs="+", help="Only these question numbers")
-    parser.add_argument("--repo-root", default=str(REPO_ROOT / "sample-repo"))
-    parser.add_argument("--eval-file", default=str(REPO_ROOT / "eval" / "evaluation.xml"))
-    parser.add_argument("--output", default=str(REPO_ROOT / "eval" / "results.md"))
-    parser.add_argument("--delay", type=float, default=13.0,
-                        help="Seconds between questions (the free tier allows ~5 requests a minute)")
+    parser.add_argument("--suite", choices=sorted(SUITES), default="sample",
+                        help="sample: the frozen sample repo; conduit: this repository")
+    parser.add_argument("--repo-root", help="Override the suite's repo")
+    parser.add_argument("--eval-file", help="Override the suite's questions")
+    parser.add_argument("--output", help="Override the suite's report path")
+    parser.add_argument("--rpm", type=float, default=5.0,
+                        help="Max model requests per minute (the free tier allows 5; 0 = unpaced)")
+    parser.add_argument("--delay", type=float, default=0.0,
+                        help="Extra pause between questions, on top of --rpm pacing")
     parser.add_argument("--fresh", action="store_true", help="Ignore the checkpoint and re-ask everything")
     parser.add_argument("--report-only", action="store_true", help="Rebuild results.md from checkpoints")
     args = parser.parse_args()
+    suite = SUITES[args.suite]
+    repo_root = args.repo_root or str(suite.repo_root)
+    eval_file = Path(args.eval_file) if args.eval_file else suite.eval_file
+    output = Path(args.output) if args.output else suite.output
     if args.report_only:
-        write_report(Path(args.output), args.provider, Path(args.eval_file))
+        write_report(output, args.provider, eval_file, suite)
         return
-    asyncio.run(run(args.provider, args.repo_root, Path(args.eval_file), Path(args.output),
-                    args.delay, args.fresh, args.baseline, set(args.questions or []) or None))
+    asyncio.run(run(args.provider, repo_root, eval_file, output, args.delay, args.fresh,
+                    args.baseline, set(args.questions or []) or None, suite=suite, rpm=args.rpm))
 
 
 if __name__ == "__main__":

@@ -29,15 +29,15 @@ runs at 3/hour/IP and 8/day globally so the budget cannot be drained by one
 visitor, and an exhausted quota renders as a plain message pointing at the
 recorded runs rather than a provider stack trace.
 
-Quota is **per model**, so `gemini-3.5-flash-lite` and `gemini-3.1-flash-lite`
-draw on separate buckets — useful when recording transcripts.
+Quota is **per model**, so two models draw on separate buckets, which is useful
+when recording transcripts. The default is `gemini-3.6-flash`.
 
 ## Recording the transcripts
 
 The preset questions replay genuine captured runs. Record them before deploying:
 
 ```bash
-GEMINI_MODEL=gemini-3.5-flash-lite uv run python scripts/record_transcripts.py
+uv run python scripts/record_transcripts.py            # gemini-3.6-flash
 ```
 
 Questions come from `eval/evaluation.xml`, so the page shows the same runs the
@@ -46,7 +46,7 @@ quota failure stops the run with whatever it got. Re-run on a later day, or
 against another model's quota, to fill in the rest:
 
 ```bash
-GEMINI_MODEL=gemini-3.1-flash-lite uv run python scripts/record_transcripts.py
+GEMINI_MODEL=<another-available-model> uv run python scripts/record_transcripts.py
 ```
 
 Each transcript records the model and date that produced it, and the page shows
@@ -61,7 +61,7 @@ read the blueprint, or create a Docker web service manually with:
 - **Dockerfile path** `./Dockerfile`
 - **Health check path** `/api/health`
 - **Environment**: `GOOGLE_API_KEY` (secret, set in the dashboard — never
-  committed), `GEMINI_MODEL=gemini-3.5-flash-lite`, `CONDUIT_REPO_ROOT=/app/sample-repo`
+  committed), `GEMINI_MODEL=gemini-3.6-flash`, `CONDUIT_REPO_ROOT=/app/sample-repo`
 
 Without `GOOGLE_API_KEY` the service still runs and serves recorded runs; live
 questions return *"Live questions are not configured on this deployment."*

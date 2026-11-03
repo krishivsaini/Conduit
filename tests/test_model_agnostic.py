@@ -13,6 +13,7 @@ import pytest
 from conduit.host.client import MCPCodebaseClient, conduit_server_params
 from conduit.host.llm.adapter import FinalAnswer, LLMAdapter, ToolCall, get_adapter
 from conduit.host.llm.gemini import GeminiAdapter
+from conduit.host.llm.groq import GroqAdapter
 from conduit.host.llm.ollama import OllamaAdapter
 from conduit.host.llm.stub import StubAdapter
 from conduit.host.loop import LOW_BUDGET_AT, MAX_STEPS, run_turn
@@ -40,13 +41,14 @@ async def test_loop_runs_with_stub_adapter(sample_repo):
 
 
 def test_all_adapters_conform_to_the_interface():
-    """Gemini, Ollama, and the stub all implement the one LLMAdapter contract,
+    """Gemini, Groq, Ollama, and the stub all implement the one LLMAdapter contract,
     and construct without any network call."""
-    for cls in (GeminiAdapter, OllamaAdapter, StubAdapter):
+    for cls in (GeminiAdapter, GroqAdapter, OllamaAdapter, StubAdapter):
         assert issubclass(cls, LLMAdapter)
 
     adapters = [
         GeminiAdapter(api_key="dummy-not-used"),
+        GroqAdapter(api_key="dummy-not-used"),
         OllamaAdapter(model="mistral"),
         StubAdapter(),
     ]
@@ -59,6 +61,8 @@ def test_get_adapter_selects_provider_by_name(monkeypatch):
     monkeypatch.setenv("GOOGLE_API_KEY", "dummy-not-used")
     assert isinstance(get_adapter("gemini"), GeminiAdapter)
     assert isinstance(get_adapter("ollama"), OllamaAdapter)
+    monkeypatch.setenv("GROQ_API_KEY", "dummy-not-used")
+    assert isinstance(get_adapter("groq"), GroqAdapter)
     with pytest.raises(ValueError):
         get_adapter("nonsense")
 

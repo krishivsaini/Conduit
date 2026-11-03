@@ -75,6 +75,15 @@ class Scripted(LLMAdapter):
         return FinalAnswer("ANSWER: bob")
 
 
+def test_the_baseline_is_told_it_has_no_tools():
+    """Otherwise it follows the usual 'answer from tool evidence' prompt, announces
+    a search it can't run, and scores 0 for reasons unrelated to what it knows."""
+    inner = Scripted()
+    assert "read-only tools" in inner.system_prompt
+    ev.NoTools(inner)
+    assert "no tools" in inner.system_prompt and "best guess" in inner.system_prompt
+
+
 async def test_runner_grades_records_traces_and_reports(sample_repo, tmp_path):
     output = tmp_path / "results.md"
     eval_file = ev.REPO_ROOT / "eval" / "evaluation.xml"
@@ -102,3 +111,88 @@ async def test_a_checkpoint_from_another_rubric_is_not_resumed(tmp_path):
     old = tmp_path / "results.stub.json"
     old.write_text(json.dumps({"provider": "stub", "results": [{"question": "q", "ok": True}]}))
     assert ev.load_checkpoint(old) == {}
+
+
+class KeyHunter(LLMAdapter):
+    """A model that goes looking for the answer key instead of the code."""
+
+    model = "key-hunter"
+
+    async def decide(self, messages: list[Message], tool_schemas: list[dict[str, Any]]) -> Decision:
+        tried = sum(m["role"] == "tool_call" for m in messages)
+        hunts = [("read_file", {"path": "eval/evaluation.conduit.xml"}),
+                 ("search_code", {"query": "<answer>"})]
+        if tried < len(hunts):
+            return ToolCall(*hunts[tried])
+        return FinalAnswer("ANSWER: 8")
+
+
+async def test_the_conduit_suite_hides_its_own_answer_key(tmp_path):
+    suite = ev.SUITES["conduit"]
+    output = tmp_path / "results.conduit.md"
+    await ev.run("stub", str(suite.repo_root), suite.eval_file, output, delay=0, fresh=True,
+                 baseline=False, only={1}, adapter=KeyHunter(), suite=suite)
+
+    (row,) = json.loads((tmp_path / "results.conduit.stub.json").read_text())["results"]
+    read, search = row["steps"]
+    assert read["is_error"] and "deny-list" in read["result_text"]
+    found = [m["path"] for m in json.loads(search["result_text"])["matches"]]
+    assert not [p for p in found if p.startswith("eval/")]  # (this test file matches its own query)
+    assert "this repository" in output.read_text()
+
+
+# --- Pacing under a requests-per-minute limit ---------------------------------
+
+PER_MINUTE = ("429 RESOURCE_EXHAUSTED. {'error': {'details': [{'quotaId': "
+              "'GenerateRequestsPerMinutePerProjectPerModel-FreeTier'}, {'retryDelay': '15s'}]}}")
+PER_DAY = ("429 RESOURCE_EXHAUSTED. {'error': {'details': [{'quotaId': "
+           "'GenerateRequestsPerDayPerProjectPerModel-FreeTier'}]}}")
+
+
+class FakeTime:
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.slept: list[float] = []
+
+    def clock(self) -> float:
+        return self.now
+
+    async def sleep(self, seconds: float) -> None:
+        self.slept.append(round(seconds, 1))
+        self.now += seconds
+
+
+class Flaky(LLMAdapter):
+    def __init__(self, errors: list[str]) -> None:
+        self.errors = errors
+        self.calls = 0
+
+    async def decide(self, messages, tool_schemas):
+        self.calls += 1
+        if self.errors:
+            raise RuntimeError(self.errors.pop(0))
+        return FinalAnswer("ANSWER: ok")
+
+
+async def test_model_calls_are_spaced_to_the_rpm_limit():
+    t = FakeTime()
+    paced = ev.Paced(Flaky([]), rpm=5, sleep=t.sleep, clock=t.clock)
+    for _ in range(3):
+        await paced.decide([], [])
+    assert t.slept == [12.0, 12.0]  # 60 s / 5 requests, none before the first
+
+
+async def test_a_per_minute_limit_is_waited_out_not_treated_as_the_end_of_the_day():
+    t = FakeTime()
+    inner = Flaky([PER_MINUTE, PER_MINUTE])
+    paced = ev.Paced(inner, rpm=0, sleep=t.sleep, clock=t.clock)
+    assert isinstance(await paced.decide([], []), FinalAnswer)
+    assert inner.calls == 3 and t.slept == [17.0, 17.0]  # Gemini's retryDelay + 2 s
+
+
+async def test_a_per_day_limit_stops_immediately():
+    t = FakeTime()
+    paced = ev.Paced(Flaky([PER_DAY]), rpm=0, sleep=t.sleep, clock=t.clock)
+    with pytest.raises(RuntimeError, match="PerDay"):
+        await paced.decide([], [])
+    assert t.slept == []

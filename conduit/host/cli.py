@@ -23,20 +23,23 @@ import os
 import re
 import sys
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, TextIO
 
 from .client import MCPCodebaseClient, conduit_server_params
 from .llm.adapter import LLMAdapter, get_adapter
+from .llm.pacing import Paced, is_per_day_limit, is_rate_limit
 from .loop import LoopResult, ToolInvocation, run_turn
 
-PROVIDERS = ("gemini", "ollama")
+PROVIDERS = ("gemini", "groq", "ollama")
 
 # A refusal only means something if it says which guarantee fired. Same naming
 # as the web demo, keyed off the server's actionable error text.
 _BOUNDARIES = (
     (re.compile(r"deny-list|denylist|excluded", re.I), "secrets deny-list"),
     (re.compile(r"outside the repo root|escape|traversal", re.I), "repo-root confinement"),
+    (re.compile(r"is not served", re.I), "repo's own exclusions (.gitignore)"),
 )
 _TOOL_ERROR_PREFIX = re.compile(r"^Error executing tool \w+:\s*")
 
@@ -150,10 +153,24 @@ def _explain(provider: str, exc: Exception) -> str:
     """Turn a provider failure into the thing the user should do about it."""
     text = str(exc)
     lowered = text.lower()
-    if any(t in lowered for t in ("429", "resource_exhausted", "quota", "rate limit")):
+    if is_rate_limit(text):
+        if provider == "groq":
+            span = "today" if is_per_day_limit(text) else "this minute"
+            return (
+                f"Groq's rate limit for {span} is used up on your plan. Retry later, "
+                "raise the limit at https://console.groq.com/settings/limits, or use "
+                "--provider gemini or --provider ollama."
+            )
+        if is_per_day_limit(text):
+            model = os.environ.get("GEMINI_MODEL", "the default model")
+            return (
+                f"today's free-tier quota for {model} is used up; it resets at midnight "
+                "Pacific time. Quota is per model, so set GEMINI_MODEL to another one, "
+                "or use --provider groq or --provider ollama."
+            )
         return (
             "the Gemini free tier is rate limited (5 requests a minute, plus a daily "
-            "cap). Wait a minute and retry, or use --provider ollama."
+            "cap). Wait a minute and retry, or use --provider groq or --provider ollama."
         )
     if any(t in lowered for t in ("503", "unavailable", "overloaded", "high demand")):
         return (
@@ -196,11 +213,12 @@ async def _ask(
 
 
 async def _run(
-    provider: str, adapter: LLMAdapter, repo_root: Path, question: str | None
+    provider: str, adapter: LLMAdapter, repo_root: Path, question: str | None,
+    deny: Sequence[str] = (),
 ) -> int:
     """Answer one question (exit status 1 if it failed), or run the REPL."""
     style = _Style(sys.stdout)
-    async with MCPCodebaseClient(conduit_server_params(str(repo_root))) as client:
+    async with MCPCodebaseClient(conduit_server_params(str(repo_root), deny=deny)) as client:
         tools = await client.discover_tools()
         names = ", ".join(t.name for t in tools)
         print(style.dim(f"provider: {provider} · tools discovered from the server: {names}"), flush=True)
@@ -243,6 +261,14 @@ def main() -> None:
         default=os.environ.get("LLM_PROVIDER", "gemini"),
         help="LLM provider (default: $LLM_PROVIDER or gemini)",
     )
+    parser.add_argument(
+        "--deny",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help="Extra pattern the server must never expose, added to its defaults "
+        "(repeatable; a trailing / denies a directory). Also: $CONDUIT_DENY",
+    )
     args = parser.parse_args()
 
     # Check the cheap things before spawning a server. A typo'd path used to
@@ -259,10 +285,15 @@ def main() -> None:
         adapter = get_adapter(args.provider)
     except (RuntimeError, ValueError) as exc:
         _fail(str(exc))
+    if args.provider in ("gemini", "groq"):
+        # A multi-step question can trip a per-minute limit partway through;
+        # wait it out rather than failing a question that's half done.
+        adapter = Paced(adapter, on_wait=lambda s: print(
+            f"\r(rate limited by {args.provider}: waiting {s:.0f}s)", file=sys.stderr, flush=True))
 
     question = " ".join(args.question) if args.question else None
     try:
-        status = asyncio.run(_run(args.provider, adapter, repo_root, question))
+        status = asyncio.run(_run(args.provider, adapter, repo_root, question, args.deny))
     except KeyboardInterrupt:
         print(file=sys.stderr)
         raise SystemExit(130)

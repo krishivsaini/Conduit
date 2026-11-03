@@ -16,10 +16,10 @@ services:
         value: /app/sample-repo
       - key: LLM_PROVIDER
         value: gemini
-      # flash-lite, not flash: the free tier allows 20 requests/day per model,
-      # and the lite models have their own separate quota bucket.
+      # Free-tier quota is per model and per day, and this key is shared with
+      # local eval runs: a heavy eval day leaves the live demo less to spend.
       - key: GEMINI_MODEL
-        value: gemini-3.5-flash-lite
+        value: gemini-3.6-flash
       # Render sits behind Cloudflare, which sets this to the one address that
       # connected to it. Do not use X-Forwarded-For: clients can prepend to it.
       - key: CONDUIT_CLIENT_IP_HEADER

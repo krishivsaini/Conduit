@@ -148,6 +148,8 @@ def test_a_failed_turn_exits_non_zero_with_a_fix(monkeypatch, capsys, sample_rep
     [
         ("Error executing tool read_file: path '.env' is excluded by the server's "
          "secrets deny-list and cannot be accessed.", "secrets deny-list"),
+        ("Error executing tool read_file: path 'PLAN.md' is not served: the repository's "
+         ".gitignore ignores 'PLAN.md'.", "repo's own exclusions (.gitignore)"),
         ("Error executing tool read_file: path '../../etc/passwd' is outside the "
          "repo root.", "repo-root confinement"),
     ],
@@ -184,3 +186,39 @@ def test_colour_only_on_a_terminal_and_never_with_no_color(monkeypatch):
     assert "\x1b[" in cli._Style(FakeTerminal()).warn("x")      # terminal: styled
     monkeypatch.setenv("NO_COLOR", "1")
     assert cli._Style(FakeTerminal()).warn("x") == "x"          # NO_COLOR wins
+
+
+def test_a_spent_daily_quota_is_not_told_to_wait_a_minute(monkeypatch):
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.6-flash")
+    day = cli._explain("gemini", RuntimeError(
+        "429 RESOURCE_EXHAUSTED {'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier'}"))
+    assert "midnight Pacific" in day and "gemini-3.6-flash" in day and "Wait a minute" not in day
+    minute = cli._explain("gemini", RuntimeError(
+        "429 RESOURCE_EXHAUSTED {'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier'}"))
+    assert "Wait a minute" in minute
+
+
+def test_the_gemini_cli_waits_out_a_per_minute_limit(monkeypatch, capsys, sample_repo):
+    from conduit.host.llm import pacing
+
+    class OnceLimited(StubAdapter):
+        hit = False
+
+        async def decide(self, messages, tool_schemas):
+            if not self.hit:
+                self.hit = True
+                raise RuntimeError("429 RESOURCE_EXHAUSTED 'quotaId': "
+                                   "'GenerateRequestsPerMinutePerProjectPerModel-FreeTier' 'retryDelay': '1s'")
+            return await super().decide(messages, tool_schemas)
+
+    async def no_sleep(seconds):
+        return None
+
+    monkeypatch.setattr(pacing.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(cli, "get_adapter", lambda provider: OnceLimited([FinalAnswer("answered")]))
+    monkeypatch.setattr(sys, "argv", ["conduit", "--repo-root", str(sample_repo), "--provider", "gemini", "q"])
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main()
+    captured = capsys.readouterr()
+    assert exit_info.value.code == 0
+    assert "waiting 3s" in captured.err and "gemini" in captured.err and captured.out.rstrip().endswith("answered")

@@ -19,7 +19,8 @@ from __future__ import annotations
 from fnmatch import fnmatch
 from pathlib import PurePosixPath
 
-# Default patterns refused even inside the root. Configurable per-deployment.
+# Default patterns refused even inside the root. A deployment can add patterns
+# (--deny / CONDUIT_DENY, see conduit/server/app.py) but never remove these.
 DEFAULT_DENY_PATTERNS: tuple[str, ...] = (
     ".env",
     ".env.*",

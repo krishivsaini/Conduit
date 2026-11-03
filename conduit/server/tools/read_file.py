@@ -82,7 +82,7 @@ def register(mcp: FastMCP, config: ServerConfig) -> None:
         # One error exit: security (confine → deny-list) and range validation
         # both raise ActionableError, converted to a clean MCP ToolError.
         try:
-            _target, lines = read_text_file(repo_root, path)
+            _target, lines = read_text_file(repo_root, path, config.deny_patterns)
 
             total = len(lines)
             if total == 0:

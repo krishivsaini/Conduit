@@ -8,9 +8,14 @@ quietly mis-grading a model.
 
 from __future__ import annotations
 
+import ast
 import importlib
 import inspect
+import os
+import pkgutil
+import re
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -102,4 +107,99 @@ def test_every_question_has_a_computed_answer(repo):
 def test_expected_answer_matches_the_code(repo, index):
     question, expected = PAIRS[index - 1]
     actual = str(_ground_truth(repo)[index])
+    assert actual == expected, f"Q{index}: key says {expected!r}, code says {actual!r}\n  {question}"
+
+
+# --- The conduit suite: questions about this repository ----------------------
+#
+# Conduit changes with every commit, so these answers can go stale; computing
+# them from the code means a change that alters one fails here, naming the
+# question, instead of silently mis-grading a model.
+
+CONDUIT_PAIRS = load_run_eval().parse_pairs(ROOT / "eval" / "evaluation.conduit.xml")
+
+
+def _class_methods(module, class_name: str) -> int:
+    tree = ast.parse(inspect.getsource(module))
+    cls = next(n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == class_name)
+    return sum(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) for n in cls.body)
+
+
+def _raised_in(fn) -> str:
+    tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    (name,) = {n.exc.func.id for n in ast.walk(tree) if isinstance(n, ast.Raise) and n.exc}
+    return name
+
+
+def _ip_header_variable() -> str:
+    """Find the variable by behaviour: set each os.environ name the web app
+    reads, and see which one decides the trusted header."""
+    from conduit.web import app as web
+
+    names = re.findall(r'os\.environ\.get\("([A-Z_]+)"', inspect.getsource(web))
+    (hit,) = [n for n in names if _with_env(n, "x-probe", lambda: web.create_app(ROOT / "sample-repo"))
+              .state.client_ip_header == "x-probe"]
+    return hit
+
+
+def _with_env(name, value, fn):
+    old = os.environ.get(name)
+    os.environ[name] = value
+    try:
+        return fn()
+    finally:
+        os.environ.pop(name) if old is None else os.environ.__setitem__(name, old)
+
+
+def _over_the_limit_status() -> int:
+    from starlette.testclient import TestClient
+
+    from conduit.host.llm.stub import StubAdapter
+    from conduit.web.app import DemoHost, create_app
+    from conduit.web.limits import RateLimiter
+
+    app = create_app(host=DemoHost(ROOT / "sample-repo", provider="stub", adapter=StubAdapter([])))
+    app.state.limiter = RateLimiter(per_ip=1, per_ip_window=60, global_daily=100)
+    client = TestClient(app)
+    client.get("/api/ask", params={"q": "one"})
+    return client.get("/api/ask", params={"q": "two"}).status_code
+
+
+def _conduit_truth() -> dict[int, object]:
+    from conduit.host import loop
+    from conduit.host.llm import replay
+    from conduit.server import indexer, tools
+    from conduit.server.security import boundary
+    from conduit.server.security.denylist import DEFAULT_DENY_PATTERNS
+
+    (dir_pattern,) = [p for p in DEFAULT_DENY_PATTERNS if p.endswith("/")]
+    tool_modules = [importlib.import_module(f"{tools.__name__}.{m.name}")
+                    for m in pkgutil.iter_modules(tools.__path__)]
+    return {
+        1: loop.MAX_STEPS,
+        2: _raised_in(replay.ReplayAdapter._check),
+        3: Path(inspect.getsourcefile(boundary.resolve_within_root)).relative_to(ROOT).as_posix(),
+        4: indexer.MAX_FILE_BYTES,
+        5: _ip_header_variable(),
+        6: _class_methods(indexer, "RepoIndex"),
+        7: loop.MAX_RESOURCE_CHARS,
+        8: dir_pattern,
+        9: sum(inspect.isfunction(getattr(m, "register", None)) for m in tool_modules),
+        10: _over_the_limit_status(),
+    }
+
+
+@pytest.fixture(scope="module")
+def conduit_truth():
+    return _conduit_truth()
+
+
+def test_every_conduit_question_has_a_computed_answer(conduit_truth):
+    assert set(conduit_truth) == set(range(1, len(CONDUIT_PAIRS) + 1))
+
+
+@pytest.mark.parametrize("index", range(1, len(CONDUIT_PAIRS) + 1))
+def test_conduit_answer_matches_the_code(conduit_truth, index):
+    question, expected = CONDUIT_PAIRS[index - 1]
+    actual = str(conduit_truth[index])
     assert actual == expected, f"Q{index}: key says {expected!r}, code says {actual!r}\n  {question}"

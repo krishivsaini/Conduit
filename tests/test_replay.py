@@ -22,19 +22,28 @@ ROOT = Path(__file__).resolve().parents[1]
 TRANSCRIPTS = json.loads((ROOT / "conduit" / "web" / "static" / "transcripts.json").read_text())["transcripts"]
 
 
-def _eval_runs() -> list[dict]:
-    """Real eval runs that recorded a trace (eval/results.gemini.json)."""
+def _eval_runs() -> list[tuple[str, dict]]:
+    """Real sample-suite eval runs that recorded a trace, from every provider
+    (eval/results.<provider>.json). Baselines have no trace; the conduit suite
+    serves this repo, which changes every commit, so it isn't replayable."""
     from tests.eval_helpers import load_run_eval
 
-    rows = load_run_eval().load_checkpoint(ROOT / "eval" / "results.gemini.json").values()
-    return [r for r in rows if r.get("reply") and not r.get("error")]
+    ev = load_run_eval()
+    runs = []
+    for path in sorted((ROOT / "eval").glob("results.*.json")):
+        provider = path.name.split(".")[1]
+        if provider == "conduit" or ".baseline." in path.name:
+            continue
+        rows = ev.load_checkpoint(path).values()  # other rubrics load as empty
+        runs += [(provider, r) for r in rows if r.get("reply") and not r.get("error")]
+    return runs
 
 
 # The demo's recorded runs, plus every real eval run that kept its tool trace.
 CASES = [pytest.param(t, id=f"demo-q{t['index']}") for t in TRANSCRIPTS] + [
     pytest.param({"question": r["question"], "steps": r["steps"], "answer": r["reply"]},
-                 id=f"eval-q{r['index']}")
-    for r in _eval_runs()
+                 id=f"eval-{provider}-q{r['index']}")
+    for provider, r in _eval_runs()
 ]
 
 

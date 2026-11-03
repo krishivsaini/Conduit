@@ -39,7 +39,16 @@ uv run conduit "Which file defines the authenticate function, and what does it r
 LLM_PROVIDER=ollama OLLAMA_MODEL=<your-model> uv run conduit "List the functions in src/payments.py"
 
 # For Gemini (free tier): put GOOGLE_API_KEY in .env (see .env.example), then run `uv run conduit`.
+# For Groq (paid, much higher limits): put GROQ_API_KEY in .env, then:
+uv run conduit --provider groq "Where is the minimum charge enforced?"
+
+# Point it at your own repo. --deny adds to the built-in deny-list (repeatable):
+uv run conduit --repo-root ~/code/my-project --deny 'secrets/' "Where is the retry logic?"
 ```
+
+On a real repository the server respects the repo's `.gitignore`, keeps its
+index current as files change, pages long results, and collapses the tree to
+fit the model's context. See [ARCHITECTURE.md](ARCHITECTURE.md#the-index-on-a-real-repository).
 
 The server also runs standalone over stdio and works with the MCP Inspector:
 
@@ -56,9 +65,10 @@ violation and asserts it fails** — security tested, not asserted.
 | Boundary | What it guarantees | Proven by |
 |---|---|---|
 | **Repo-root confinement** | resolves `..` *and* symlinks, then refuses anything outside the root | `tests/test_security_traversal.py` — 14 cases incl. symlink escape |
-| **Secrets deny-list** | `.env`, `*.key`, `*.pem`, `.git/`, `id_rsa`, … never read, searched, or listed — matched on the *resolved* path, so a symlink like `notes.txt → .env` is refused too | `tests/test_security_denylist.py` |
+| **Secrets deny-list** | `.env`, `*.key`, `*.pem`, `.git/`, `id_rsa`, … never read, searched, or listed — matched on the *resolved* path, so a symlink like `notes.txt → .env` is refused too. Add your own with `--deny` or `CONDUIT_DENY`; the defaults can't be removed | `tests/test_security_denylist.py`, `tests/test_real_repo.py` |
 | **Read-only posture** | no tool writes or executes; the server refuses to build if a non-read-only tool is registered | `tests/test_security_readonly.py` — incl. a static scan for writes / `subprocess`, itself tested against 20 ways to write a file or start a process |
-| **Bounded output** | reads are line-range capped; search is paginated | `tests/test_tools.py` |
+| **The repo's own exclusions** | files the repo's `.gitignore` excludes (nested files and `.git/info/exclude` too) and vendor dirs like `node_modules` are neither listed nor served, so a model can't read `.gitignore` and then open the private files it names. A `!.env` rule can't re-include a secret | `tests/test_real_repo.py` |
+| **Bounded output** | reads are line-range capped; search and symbol listings page; the tree collapses to fit | `tests/test_tools.py`, `tests/test_real_repo.py` |
 
 The bundled [`sample-repo/`](sample-repo/) ships **intentionally fake** secrets
 (`.env`, `service.key`) so the deny-list can be shown refusing them live. All
@@ -86,9 +96,11 @@ proposition demonstrated, not asserted.
 ## Model-agnostic
 
 The host loop calls **one adapter interface** and never a provider SDK.
-`LLM_PROVIDER` selects Gemini (`gemini-3.5-flash`, free tier) or a local Ollama
-model; a deterministic stub proves the loop is provider-independent in tests.
-Swapping providers changes one env var, no loop code.
+`LLM_PROVIDER` (or `--provider`) selects Gemini (`gemini-3.6-flash` by default,
+free tier), Groq (`openai/gpt-oss-120b` by default, paid limits) or a local Ollama
+model; `GEMINI_MODEL` / `GROQ_MODEL` / `OLLAMA_MODEL` pick the model. A
+deterministic stub proves the loop is provider-independent in tests. Swapping
+providers changes one env var, no loop code; adding Groq was one new module.
 
 ## Evaluation
 
@@ -111,17 +123,44 @@ validation", but it accepts 10 cents).
 - **Recorded traces.** Each run keeps its full tool trace, and CI replays it
   against the live server ([`tests/test_replay.py`](tests/test_replay.py)).
 
-**Results so far (Gemini, strict rubric):** 5/5 on multi-step questions 13–17,
-using 1–2 tool calls each. The free-tier daily quota ran out before the rest, and
-the baseline hasn't been run yet. The runner resumes where it stopped, so
-[`eval/results.md`](eval/results.md) fills in over later runs. The earlier
-12-question run, graded with a lenient substring check, is kept in
+**On a real repository.** A second suite,
+[`eval/evaluation.conduit.xml`](eval/evaluation.conduit.xml), asks 10 questions
+about Conduit itself, with the server serving this checkout and `eval/` added to
+its deny-list so the model can't read the answer key. Each question describes a
+behaviour ("which header does the demo trust for a visitor's IP?"), so the model
+has to find the code among ~350 symbols.
+
+**Results (`openai/gpt-oss-120b` on Groq, strict rubric):**
+
+| Suite | With tools | Same model, no tools |
+|---|---|---|
+| Sample repo, 20 questions ([table](eval/results.md)) | **20/20**, 3.2 tool calls on average | 5/20 |
+| This repository, 10 questions ([table](eval/results.conduit.md)) | **9/10**, 4.5 tool calls on average | 2/10 |
+
+The no-tools passes are guesses that land: True/False questions, and values
+like 429, the standard rate-limit status. Its misses are confident answers about
+other codebases (`ToolOutputMismatchError`, `src/util.c`, `REAL_IP_HEADER`). The
+one miss with tools searched the right folder but ran out of steps before
+finding `MAX_STEPS`.
+
+Running a real model changed the server twice. `gpt-oss` guessed argument names
+(`read_file(line_start=…)` for `start_line`), and the server, like FastMCP by
+default, silently ignored them and returned the whole file. It now refuses an
+unknown argument and names the right one ("did you mean `start_line`?"). The
+model also kept asking `search_code` for a `path` it didn't have, and
+`list_symbols` given a folder answered "0 symbols"; both now take a file or
+folder, checked by the same boundaries as any other path.
+Earlier partial runs on the Gemini free tier, stopped by its daily quota, are
+kept in `eval/results.gemini.json` (5/5) and `eval/results.conduit.gemini.json`
+(3/3); the first 12-question run, graded with a lenient substring check, is in
 [`eval/results.gemini.v1.json`](eval/results.gemini.v1.json).
 
 ```bash
-uv run python eval/run_eval.py                      # gemini; resumes a partial run
+uv run python eval/run_eval.py --provider groq      # the runs above
+uv run python eval/run_eval.py                      # gemini free tier; paced, resumes
 uv run python eval/run_eval.py --baseline           # same questions, no tools
 uv run python eval/run_eval.py --questions 18 19 20 # only these
+uv run python eval/run_eval.py --suite conduit      # the real-repo suite
 uv run python eval/run_eval.py --provider ollama    # fully local
 ```
 
@@ -185,6 +224,7 @@ tool-vs-resource rationale.
 ## Limitations (deliberate scope choices)
 
 - **Read-only** — no write / refactor / exec tools, by design (keeps the security surface tractable).
+- **Ignored files aren't served at all** — what the repo's `.gitignore` excludes is neither listed nor readable, so generated code that's gitignored can't be asked about. Serve a different root if you need it. Your global git excludes (`core.excludesFile`) aren't read.
 - **The deny-list matches names, not contents** — it refuses files by path (`.env`, `*.key`, …). A secret pasted into an ordinarily named file such as `settings.py` is served like any other code. Keep secrets in files that match the deny-list, or extend it.
 - **The read-only scan is a strong check, not a proof** — it reads the code as written, so it cannot see through `getattr()`, names built at runtime, or a dependency that writes on the server's behalf. The startup guard is what actually stops a write tool from being exposed.
 - **Single server** — one server built deeply, not a multi-server hub.

@@ -1,0 +1,128 @@
+{
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "rubric": 2,
+  "baseline": true,
+  "results": [
+    {
+      "index": 1,
+      "question": "In this repository's host, what is the default maximum number of tool calls the model may make while answering one question? Answer with just the number.",
+      "expected": "8",
+      "answer": "5",
+      "reply": "5\nANSWER: 5",
+      "steps": [],
+      "ok": false,
+      "error": null,
+      "model": "openai/gpt-oss-120b",
+      "date": "2026-11-03"
+    },
+    {
+      "index": 2,
+      "question": "When a recorded model run is replayed and a tool now returns something different from the recording, which exception class is raised? Answer with just the class name.",
+      "expected": "ReplayDivergence",
+      "answer": "ToolOutputMismatchError",
+      "reply": "ToolOutputMismatchError  \nANSWER: ToolOutputMismatchError",
+      "steps": [],
+      "ok": false,
+      "error": null,
+      "model": "openai/gpt-oss-120b",
+      "date": "2026-11-03"
+    },
+    {
+      "index": 3,
+      "question": "Which file defines the function that confines a client-supplied path to the served repository root? Answer with the repository-relative path.",
+      "expected": "conduit/server/security/boundary.py",
+      "answer": "src/util.c",
+      "reply": "src/util.c  \nANSWER: src/util.c",
+      "steps": [],
+      "ok": false,
+      "error": null,
+      "model": "openai/gpt-oss-120b",
+      "date": "2026-11-03"
+    },
+    {
+      "index": 4,
+      "question": "Files larger than a certain size are skipped when the server indexes a repository. What is that limit in bytes? Answer with just the number, with no separators.",
+      "expected": "1000000",
+      "answer": "1000000",
+      "reply": "1000000\nANSWER: 1000000",
+      "steps": [],
+      "ok": true,
+      "error": null,
+      "model": "openai/gpt-oss-120b",
+      "date": "2026-11-03"
+    },
+    {
+      "index": 5,
+      "question": "Which environment variable tells the web demo which HTTP header to trust for a visitor's IP address? Answer with just the variable name.",
+      "expected": "CONDUIT_CLIENT_IP_HEADER",
+      "answer": "REAL_IP_HEADER",
+      "reply": "ANSWER: REAL_IP_HEADER",
+      "steps": [],
+      "ok": false,
+      "error": null,
+      "model": "openai/gpt-oss-120b",
+      "date": "2026-11-03"
+    },
+    {
+      "index": 6,
+      "question": "How many methods, counting __init__ and private ones, are defined directly in the body of the class that indexes the served repository? Answer with just the number.",
+      "expected": "7",
+      "answer": "6",
+      "reply": "ANSWER: 6",
+      "steps": [],
+      "ok": false,
+      "error": null,
+      "model": "openai/gpt-oss-120b",
+      "date": "2026-11-03"
+    },
+    {
+      "index": 7,
+      "question": "Before the first question, the host attaches the server's resources to the model's context, truncating each one past a limit. What is that limit, in characters? Answer with just the number.",
+      "expected": "8000",
+      "answer": "2000",
+      "reply": "2000\nANSWER: 2000",
+      "steps": [],
+      "ok": false,
+      "error": null,
+      "model": "openai/gpt-oss-120b",
+      "date": "2026-11-03"
+    },
+    {
+      "index": 8,
+      "question": "Of the server's default secrets deny-list patterns, which one denies a directory rather than a file? Answer with the pattern exactly as written in the code.",
+      "expected": ".git/",
+      "answer": "/.git/",
+      "reply": "/.git/\n\nANSWER: /.git/",
+      "steps": [],
+      "ok": false,
+      "error": null,
+      "model": "openai/gpt-oss-120b",
+      "date": "2026-11-03"
+    },
+    {
+      "index": 9,
+      "question": "How many modules in the server's tools package define a function named register? Answer with just the number.",
+      "expected": "4",
+      "answer": "2",
+      "reply": "ANSWER: 2",
+      "steps": [],
+      "ok": false,
+      "error": null,
+      "model": "openai/gpt-oss-120b",
+      "date": "2026-11-03"
+    },
+    {
+      "index": 10,
+      "question": "What HTTP status code does the web demo return when a visitor has used up their question allowance? Answer with just the number.",
+      "expected": "429",
+      "answer": "429",
+      "reply": "429\nANSWER: 429",
+      "steps": [],
+      "ok": true,
+      "error": null,
+      "model": "openai/gpt-oss-120b",
+      "date": "2026-11-03"
+    }
+  ]
+}

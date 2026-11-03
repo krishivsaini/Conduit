@@ -12,8 +12,8 @@ than a separate demo script, so what the page shows is the same thing the eval
 grades. Selection defaults to a curated subset that exercises each tool and ends
 on the security refusal.
 
-Free-tier quotas are per-model and per-day (gemini-3.5-flash allows 20 requests
-a day; one question costs several), so recording **resumes** like eval/run_eval.py
+Free-tier quotas are per-model and per-day (a small daily cap; one question
+costs several requests), so recording **resumes** like eval/run_eval.py
 does: questions already captured are kept and skipped, and a quota failure stops
 the run with whatever it got. Top the set up on a later day, or from another
 model's quota, and the file fills in. Each transcript records the model that
@@ -22,6 +22,7 @@ produced it.
     uv run python scripts/record_transcripts.py                # gemini, curated subset
     uv run python scripts/record_transcripts.py --provider ollama
     uv run python scripts/record_transcripts.py --questions 1 4 11
+    uv run python scripts/record_transcripts.py --redo 5       # re-record one, keep the rest
     uv run python scripts/record_transcripts.py --fresh        # re-record everything
 """
 
@@ -31,6 +32,7 @@ import argparse
 import asyncio
 import importlib.util
 import json
+import sys
 from dataclasses import asdict
 from datetime import date
 from pathlib import Path
@@ -75,15 +77,19 @@ def _parse_pairs(eval_file: Path) -> list[tuple[str, str]]:
     spec = importlib.util.spec_from_file_location("_run_eval", PROJECT_ROOT / "eval" / "run_eval.py")
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # dataclasses look their module up here
     spec.loader.exec_module(module)
     return module.parse_pairs(eval_file)
 
 
-async def record(provider: str, repo_root: str, indices: list[int], delay: float, fresh: bool) -> None:
+async def record(
+    provider: str, repo_root: str, indices: list[int], delay: float, fresh: bool, redo: list[int]
+) -> None:
     pairs = _parse_pairs(EVAL_FILE)
     adapter = get_adapter(provider)
     model = getattr(adapter, "model", provider)
 
+    indices = list(dict.fromkeys([*indices, *redo]))
     selected = []
     for i in indices:
         if not 1 <= i <= len(pairs):
@@ -94,6 +100,7 @@ async def record(provider: str, repo_root: str, indices: list[int], delay: float
     existing: dict[int, dict] = {}
     if not fresh and OUTPUT.exists():
         existing = {t["index"]: t for t in json.loads(OUTPUT.read_text())["transcripts"]}
+        existing = {i: t for i, t in existing.items() if i not in redo}
         if existing:
             print(f"resuming: {len(existing)} transcript(s) already recorded\n")
 
@@ -141,7 +148,10 @@ async def record(provider: str, repo_root: str, indices: list[int], delay: float
     if not merged:
         raise SystemExit("\nNothing recorded — not writing an empty transcripts file.")
 
+    # Keep transcripts outside this run's selection too: recording one question
+    # must not drop the others.
     ordered = [merged[i] for i in indices if i in merged]
+    ordered += [merged[i] for i in sorted(merged) if i not in indices]
     missing = [i for i in indices if i not in merged]
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
@@ -176,8 +186,16 @@ def main() -> None:
     )
     parser.add_argument("--delay", type=float, default=6.0, help="Seconds between questions")
     parser.add_argument("--fresh", action="store_true", help="Re-record everything, ignoring what exists")
+    parser.add_argument(
+        "--redo",
+        type=int,
+        nargs="+",
+        default=[],
+        metavar="N",
+        help="Re-record just these questions, keeping the rest (e.g. after a server change)",
+    )
     args = parser.parse_args()
-    asyncio.run(record(args.provider, args.repo_root, args.questions, args.delay, args.fresh))
+    asyncio.run(record(args.provider, args.repo_root, args.questions, args.delay, args.fresh, args.redo))
 
 
 if __name__ == "__main__":

@@ -9,7 +9,9 @@ the property proven by tests/test_dynamic_discovery.py.
 
 from __future__ import annotations
 
+import os
 import sys
+from collections.abc import Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,16 +41,31 @@ class DiscoveredResource:
     mime_type: str | None
 
 
-def conduit_server_params(repo_root: str | Path, python_executable: str | None = None) -> StdioServerParameters:
+# Settings the server reads from its environment (see conduit/server/app.py).
+SERVER_ENV_VARS = ("CONDUIT_DENY", "FASTMCP_LOG_LEVEL")
+
+
+def conduit_server_params(
+    repo_root: str | Path,
+    python_executable: str | None = None,
+    deny: Sequence[str] = (),
+) -> StdioServerParameters:
     """Build stdio params that launch the Conduit server for ``repo_root``.
 
     Uses the current interpreter by default so the client and server share the
-    same environment.
+    same environment. ``deny`` adds patterns to the server's deny-list.
+
+    The MCP stdio client gives a server only a short list of safe variables
+    (HOME, PATH, ...), so the server's own settings are forwarded explicitly.
+    Without this, ``CONDUIT_DENY`` set in the user's shell would be silently
+    dropped and the server would deny less than they asked for.
     """
-    return StdioServerParameters(
-        command=python_executable or sys.executable,
-        args=["-m", "conduit.server.app", "--repo-root", str(repo_root)],
-    )
+    args = ["-m", "conduit.server.app", "--repo-root", str(repo_root)]
+    for pattern in deny:
+        args += ["--deny", pattern]
+    env = {k: os.environ[k] for k in SERVER_ENV_VARS if k in os.environ}
+    return StdioServerParameters(command=python_executable or sys.executable, args=args, env=env or None)
+
 
 
 class MCPCodebaseClient:

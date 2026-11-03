@@ -36,7 +36,7 @@ class OllamaAdapter(LLMAdapter):
     async def decide(self, messages: list[Message], tool_schemas: list[dict[str, Any]]) -> Decision:
         response = await self._client.chat(
             model=self.model,
-            messages=_to_messages(messages),
+            messages=_to_messages(messages, self.system_prompt),
             tools=_to_tools(tool_schemas) or None,  # no tools => must answer in text
             options={"temperature": 0},  # deterministic tool selection
         )
@@ -63,9 +63,9 @@ def _to_tools(tool_schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
-def _to_messages(messages: list[Message]) -> list[dict[str, Any]]:
+def _to_messages(messages: list[Message], system_prompt: str = SYSTEM_PROMPT) -> list[dict[str, Any]]:
     """Translate neutral messages into Ollama chat messages (with a system prompt)."""
-    out: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    out: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     for m in messages:
         role = m["role"]
         if role == "user":

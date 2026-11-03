@@ -17,15 +17,18 @@ from ..indexer import RepoIndex
 REPO_TREE_URI = "repo://tree"
 
 
-def register(mcp: FastMCP, config: ServerConfig) -> None:
+def register(mcp: FastMCP, config: ServerConfig, index: RepoIndex) -> None:
     """Register the repo_tree resource on the server."""
-    index = RepoIndex(config.repo_root)
 
     @mcp.resource(
         REPO_TREE_URI,
         name="repo_tree",
         title="Repository file tree",
-        description="The served repo's file tree (deny-listed files excluded), as JSON.",
+        description=(
+            "The served repo's file tree as JSON (deny-listed and .gitignored files excluded). "
+            "On a large repo, deep directories are collapsed to a file_count: use search_code "
+            "or list_symbols to find files inside them."
+        ),
         mime_type="application/json",
     )
     def repo_tree() -> str:

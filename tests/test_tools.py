@@ -124,3 +124,85 @@ async def test_diff_missing_file_is_actionable(server):
     with pytest.raises(ToolError) as exc:
         await server.call_tool("diff", {"a": "src/auth.py", "b": "src/nope.py"})
     assert "does not exist" in str(exc.value)
+
+
+# --- Arguments a tool doesn't take ------------------------------------------
+# FastMCP ignores unknown arguments. A real model called
+# read_file(line_start=1, line_end=3) and silently got the whole file; it also
+# called search_code(path=...) expecting a scoped search and got the whole repo.
+
+
+@pytest.mark.parametrize("tool, args, hint", [
+    ("read_file", {"path": "src/auth.py", "line_start": 1, "line_end": 3},
+     ["'line_start' (did you mean 'start_line'?)", "'line_end' (did you mean 'end_line'?)"]),
+    ("search_code", {"query": "charge", "file": "src/payments.py"}, ["'file'", "query, limit, offset"]),
+    ("list_symbols", {"pth": "src/auth.py"}, ["'pth' (did you mean 'path'?)"]),
+    ("diff", {"a": "src/auth.py", "b": "src/utils.py", "context": 3}, ["'context'", "Its arguments are: a, b"]),
+])
+async def test_an_unknown_argument_is_refused_with_the_right_names(server, tool, args, hint):
+    with pytest.raises(ToolError) as exc:
+        await server.call_tool(tool, args)
+    msg = str(exc.value)
+    assert all(h in msg for h in hint), msg
+    assert "Traceback" not in msg
+
+
+async def test_the_refusal_reaches_a_real_client_as_a_tool_error(sample_repo):
+    from conduit.host.client import MCPCodebaseClient, conduit_server_params
+
+    async with MCPCodebaseClient(conduit_server_params(sample_repo)) as client:
+        bad = await client.call_tool("read_file", {"path": "src/auth.py", "line_start": 1})
+        good = await client.call_tool("read_file", {"path": "src/auth.py", "start_line": 1, "end_line": 3})
+    assert bad.isError and "did you mean 'start_line'" in bad.content[0].text
+    assert not good.isError and '"end_line": 3' in good.content[0].text
+
+
+async def test_the_documented_arguments_still_work(server):
+    s = await structured(server, "read_file", {"path": "src/auth.py", "start_line": 1, "end_line": 3})
+    assert (s["start_line"], s["end_line"]) == (1, 3)
+
+
+# --- Narrowing search and symbols to a file or directory ---------------------
+# Real runs asked for this 26 times (search_code(path=...)), and list_symbols
+# given a directory used to answer "0 symbols" instead of listing them.
+
+
+async def test_search_can_be_narrowed_to_a_file_or_directory(server):
+    everywhere = await structured(server, "search_code", {"query": "def "})
+    in_file = await structured(server, "search_code", {"query": "def ", "path": "src/payments.py"})
+    in_dir = await structured(server, "search_code", {"query": "def ", "path": "src"})
+    assert {m["path"] for m in in_file["matches"]} == {"src/payments.py"}
+    assert in_file["total_matches"] < in_dir["total_matches"] <= everywhere["total_matches"]
+    root = await structured(server, "search_code", {"query": "def ", "path": "."})
+    assert root["total_matches"] == everywhere["total_matches"]
+
+
+async def test_list_symbols_takes_a_directory(server):
+    s = await structured(server, "list_symbols", {"path": "src"})
+    assert {"authenticate", "charge", "redact"} <= {x["name"] for x in s["symbols"]}
+    assert all(x["path"].startswith("src/") for x in s["symbols"])
+
+
+async def test_a_prefix_is_not_a_directory(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("def inside(): pass\n")
+    (tmp_path / "src_old.py").write_text("def outside(): pass\n")
+    server = build_server(load_config(str(tmp_path)))
+    s = await structured(server, "list_symbols", {"path": "src"})
+    assert [x["name"] for x in s["symbols"]] == ["inside"]
+
+
+@pytest.mark.parametrize("path, refusal", [
+    ("../", "outside the repo root"),
+    (".env", "deny-list"),
+    ("src/nope", "does not exist"),
+])
+async def test_a_scope_goes_through_the_same_boundaries(server, path, refusal):
+    for tool, args in [("search_code", {"query": "x", "path": path}), ("list_symbols", {"path": path})]:
+        with pytest.raises(ToolError, match=refusal):
+            await server.call_tool(tool, args)
+
+
+async def test_a_null_for_an_unknown_argument_is_ignored(server):
+    s = await structured(server, "search_code", {"query": "charge", "file": None})
+    assert s["total_matches"] > 0

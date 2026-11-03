@@ -87,6 +87,10 @@ Decision = Union[ToolCall, FinalAnswer]
 class LLMAdapter(ABC):
     """One interface behind which any provider drives tool-selection."""
 
+    # Providers send this as their system prompt. An instance may replace it,
+    # as the eval's no-tools baseline does.
+    system_prompt: str = SYSTEM_PROMPT
+
     @abstractmethod
     async def decide(self, messages: list[Message], tool_schemas: list[dict[str, Any]]) -> Decision:
         """Return the next :class:`ToolCall` or a :class:`FinalAnswer`.
@@ -114,6 +118,10 @@ def get_adapter(provider: str | None = None) -> LLMAdapter:
         from .ollama import OllamaAdapter
 
         return OllamaAdapter.from_env()
+    if provider == "groq":
+        from .groq import GroqAdapter
+
+        return GroqAdapter.from_env()
     # The deterministic 'stub' adapter is deliberately not selectable here —
     # tests construct it directly.
-    raise ValueError(f"unknown LLM_PROVIDER '{provider}'. Use 'gemini' or 'ollama'.")
+    raise ValueError(f"unknown LLM_PROVIDER '{provider}'. Use 'gemini', 'groq' or 'ollama'.")

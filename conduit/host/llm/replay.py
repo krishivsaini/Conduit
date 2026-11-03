@@ -34,6 +34,7 @@ class ReplayAdapter(LLMAdapter):
     """
 
     def __init__(self, transcript: dict[str, Any]) -> None:
+        self._transcript = transcript
         self._steps = transcript["steps"]
         self._answer = transcript["answer"]
         self._turn = 0
@@ -60,5 +61,12 @@ class ReplayAdapter(LLMAdapter):
                 f"step {index + 1} {recorded['name']}({recorded['arguments']}) diverged from the "
                 f"recording.\n  recorded: {recorded['result_text'][:300]!r}\n"
                 f"  live:     {live['content'][:300]!r}\n"
-                "If the change is intended, re-record: uv run python scripts/record_transcripts.py --fresh"
+                + self._rerecord_hint()
             )
+
+    def _rerecord_hint(self) -> str:
+        index = self._transcript.get("index")
+        if "caption" in self._transcript and index is not None:  # a web-demo transcript
+            return ("If the change is intended, re-record this run: "
+                    f"uv run python scripts/record_transcripts.py --redo {index}")
+        return "If the change is intended, re-record this run with the tool that produced it."

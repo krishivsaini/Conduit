@@ -17,7 +17,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+from ..access import resolve_scope
 from ..app import ServerConfig
+from ..errors import ActionableError, to_tool_error
 from ..indexer import RepoIndex
 
 
@@ -45,11 +47,8 @@ class SearchResult(BaseModel):
     matches: list[SearchMatchOut] = Field(description="The matches on this page.")
 
 
-def register(mcp: FastMCP, config: ServerConfig) -> None:
+def register(mcp: FastMCP, config: ServerConfig, index: RepoIndex) -> None:
     """Register the search_code tool on the server."""
-    index = RepoIndex(config.repo_root)
-    index.build()
-
     @mcp.tool(
         name="search_code",
         title="Search the repo for a text/symbol substring",
@@ -68,19 +67,29 @@ def register(mcp: FastMCP, config: ServerConfig) -> None:
         limit: Annotated[int, Field(description="Max matches to return.", ge=1, le=100)] = 20,
         offset: Annotated[int, Field(description="Matches to skip (pagination).", ge=0)] = 0,
         case_sensitive: Annotated[bool, Field(description="Case-sensitive match.")] = False,
+        path: Annotated[
+            str | None,
+            Field(description="Only search this repo-relative file or directory (default: the whole repo)."),
+        ] = None,
     ) -> SearchResult:
         """Search the served repo for a literal substring, paginated.
 
         Use this to locate where something is defined or referenced (e.g. a
         function name, a constant, an error string), then read_file the result.
-        Secrets are excluded — deny-listed files are never indexed. Matches are
+        Give ``path`` to search one file or directory. Secrets are excluded — deny-listed files are never indexed. Matches are
         ordered by path then line for stable pagination.
 
         Returns:
             A structured result with the total match count, this page's matches
             (path + line + snippet), and pagination info (has_more, next_offset).
         """
-        total, page = index.search(query, limit=limit, offset=offset, case_sensitive=case_sensitive)
+        try:
+            scope = resolve_scope(config.repo_root, path, config.deny_patterns)
+        except ActionableError as e:
+            raise to_tool_error(e)
+        total, page = index.search(
+            query, limit=limit, offset=offset, case_sensitive=case_sensitive, path=scope
+        )
         count = len(page)
         has_more = offset + count < total
         return SearchResult(

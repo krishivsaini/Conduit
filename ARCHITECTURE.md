@@ -27,6 +27,7 @@ plus a swappable LLM behind a single adapter interface:
 │              ▼                                                     │              │
 │        llm/adapter.LLMAdapter   (one interface)                   │              │
 │          ├─ gemini.GeminiAdapter   (google-genai, default)        │              │
+│          ├─ groq.GroqAdapter       (OpenAI-style, paid limits)    │              │
 │          ├─ ollama.OllamaAdapter   (local, offline)               │              │
 │          └─ stub.StubAdapter       (deterministic, tests)         │              │
 │                                                                   │              │
@@ -102,11 +103,44 @@ context (compacted, capped at 8,000 characters), so the model can go straight to
 a file instead of spending tool calls finding it. Deny-listed files are absent
 from it, so the tree never hints at where a secret lives.
 
+### The index, on a real repository
+
+`search_code`, `list_symbols` and `repo://tree` share one `indexer.RepoIndex`,
+built once when the server starts. It stays current: before each query it
+re-stats the walk and re-reads only files whose size or mtime changed, so an edit
+made while the server runs is searchable straight away, not only readable.
+Measured on 2,700 files / 730k lines: a cold build takes ~2 s and the
+per-query freshness check ~0.1 s, which is why there is no on-disk cache (a
+cache would also be the server's first write to disk).
+
+What the server serves, in order: the deny-list (secrets), no symlinks in the
+walk, the repo's own `.gitignore` files (nested ones and `.git/info/exclude`
+too), then vendor directories such as `node_modules`. It presents **one view**:
+a file the walk leaves out is also refused by `read_file`, `diff` and
+`list_symbols` (`indexer.hidden_reason`), so no file is readable without being
+listed. That matters because `.gitignore` is itself served and names the files a
+repo keeps private; "not listed but readable by exact path" would hand a model
+that list. The deny-list is still checked first and can't be undone by a
+`.gitignore` (`!.env` re-includes nothing).
+
+Both result lists page (`offset` / `next_offset`). The tree is meant to be read
+in one go, so past 6,000 characters it collapses directories to a `file_count`:
+deepest level first, biggest first within a level, stopping as soon as it fits.
+It always stays whole, valid JSON. Before this, the
+host cut it off at 8,000 characters, mid-JSON, on any real repo.
+
+Proven by `tests/test_real_repo.py`, which also serves this checkout and checks,
+with `git check-ignore`, that nothing git ignores is indexed.
+
 **Schema design:** every tool has a flat, typed input schema (Pydantic via
 `Annotated[..., Field(...)]`), structured output (a Pydantic return type →
 generated `outputSchema` + `structuredContent`), tool annotations
 (`readOnlyHint=True`, …), and actionable errors. All path inputs pass through the
-security boundary before touching disk.
+security boundary before touching disk. An argument a tool doesn't take is
+refused with the right names (`ConduitMCP.call_tool`): FastMCP's default is to
+ignore it, which turned a model's `read_file(line_start=1, line_end=3)` into a
+silent whole-file read. `search_code` and `list_symbols` take an optional file
+or directory `path`, resolved through the same boundary as `read_file`.
 
 ---
 
@@ -118,14 +152,14 @@ violation and asserts it fails.** Client-supplied paths are untrusted.
 | Boundary | Enforced in | Proven by |
 |---|---|---|
 | **Repo-root confinement / path traversal** — resolve `..` *and* symlinks, then check containment by path ancestry (not string prefix) | `security/boundary.py` | `tests/test_security_traversal.py` (14 cases: `../`, absolute, symlink escape, sibling-prefix refused; valid/nested/in-root-symlink allowed) |
-| **Secrets deny-list** — case-insensitive, per-component glob (`.env`, `.env.*`, `*.key`, `*.pem`, `.git/`, `id_rsa`, …); checked on the *resolved* path so a symlink-to-secret is caught. Matches names, not file contents | `security/denylist.py` | `tests/test_security_denylist.py` (denied from read, search, and the tree; file and directory symlinks to secrets refused) |
+| **Secrets deny-list** — case-insensitive, per-component glob (`.env`, `.env.*`, `*.key`, `*.pem`, `.git/`, `id_rsa`, …); checked on the *resolved* path so a symlink-to-secret is caught. A deployment can add patterns (`--deny`, `CONDUIT_DENY`) but not remove the defaults. Matches names, not file contents | `security/denylist.py` | `tests/test_security_denylist.py` (denied from read, search, and the tree; file and directory symlinks to secrets refused) |
 | **Read-only posture** — no tool mutates the FS or executes code; the server refuses to build if a non-allow-listed tool, or one without `readOnlyHint`, is registered | `security/readonly.py` | `tests/test_security_readonly.py` (a guard test smuggles a write tool into `build_server` and expects refusal; an **AST scan** checks no server code writes, deletes or starts a process, and is itself tested against 20 such patterns — a strong check, not a proof) |
-| **Bounded output** — reads are line-range capped (`MAX_LINES`), search is paginated | `read_file`, `search_code` | `tests/test_tools.py` |
+| **Bounded output** — reads are line-range capped (`MAX_LINES`), search and symbol listings page, the tree collapses to fit | `read_file`, `indexer.py` | `tests/test_tools.py`, `tests/test_real_repo.py` |
 
 **Enforcement ordering (an architectural invariant):**
 
 ```
-client path ──► boundary.resolve_within_root ──► denylist.is_denied ──► filesystem (read-only)
+client path ──► boundary.resolve_within_root ──► denylist.is_denied ──► indexer.hidden_reason ──► filesystem (read-only)
 ```
 
 No tool reaches disk before both checks pass. A consequence worth calling out:
@@ -143,16 +177,23 @@ The host loop depends only on one interface and never imports a provider SDK:
 adapter.decide(messages, tool_schemas) -> ToolCall(name, arguments) | FinalAnswer(text)
 ```
 
-- `GeminiAdapter` and `OllamaAdapter` implement it; `LLM_PROVIDER` selects at
+- `GeminiAdapter`, `GroqAdapter` and `OllamaAdapter` implement it; `LLM_PROVIDER` selects at
   runtime via `get_adapter`. A `StubAdapter` (deterministic, no network) proves
   the loop is provider-independent in tests.
 - The loop keeps a **provider-neutral** message list; each adapter translates it
   to its own SDK format. Provider-specific data that must round-trip (e.g.
-  Gemini 3.x **thought signatures**) rides along in an opaque `provider_meta`
-  blob that the loop propagates verbatim and never interprets — so the
-  abstraction stays clean.
-- Proven on two providers: Gemini (free tier) and a fully-local Ollama model,
-  plus the stub. See `tests/test_model_agnostic.py` and `eval/results.md`.
+  Gemini 3.x **thought signatures**, or the OpenAI-style tool-call id Groq needs
+  to pair a result with its call) rides along in an opaque `provider_meta` blob
+  that the loop propagates verbatim and never interprets — so the abstraction
+  stays clean.
+- Adding Groq took one module and one branch in `get_adapter`; no loop, server or
+  client code changed. Proven on three providers (Gemini, Groq, a fully-local
+  Ollama model) plus the stub. See `tests/test_model_agnostic.py`,
+  `tests/test_groq_adapter.py` and `eval/results.md`.
+- `pacing.Paced` wraps any adapter to live with per-minute rate limits: it waits
+  out a per-minute 429 for the delay the provider names, and re-raises a per-day
+  one. A multi-step question makes several calls back to back, so without it a
+  5-a-minute free tier failed questions halfway through.
 
 ---
 
