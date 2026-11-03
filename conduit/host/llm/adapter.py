@@ -104,12 +104,14 @@ class LLMAdapter(ABC):
 
 
 def get_adapter(provider: str | None = None) -> LLMAdapter:
-    """Build the adapter selected by ``provider`` or ``$LLM_PROVIDER``.
+    """Build the adapter selected by ``provider`` or ``$LLM_PROVIDER`` (default ``auto``).
 
     The loop calls this and nothing else about a provider; adding a provider is
     a new branch here plus a new module, with no change to the loop.
     """
-    provider = (provider or os.environ.get("LLM_PROVIDER") or "gemini").lower()
+    provider = (provider or os.environ.get("LLM_PROVIDER") or "auto").lower()
+    if provider == "auto":
+        return _auto_adapter()
     if provider == "gemini":
         from .gemini import GeminiAdapter
 
@@ -124,4 +126,29 @@ def get_adapter(provider: str | None = None) -> LLMAdapter:
         return GroqAdapter.from_env()
     # The deterministic 'stub' adapter is deliberately not selectable here —
     # tests construct it directly.
-    raise ValueError(f"unknown LLM_PROVIDER '{provider}'. Use 'gemini', 'groq' or 'ollama'.")
+    raise ValueError(
+        f"unknown LLM_PROVIDER '{provider}'. Use 'auto', 'gemini', 'groq' or 'ollama'."
+    )
+
+
+def _auto_adapter() -> LLMAdapter:
+    """Gemini's free tier, falling back to Groq, using whichever keys are set.
+
+    Both keys: Gemini first, Groq when Gemini is rate limited. One key: just that
+    provider, so a clone with only a Gemini key behaves exactly as before.
+    """
+    has_gemini = bool(os.environ.get("GOOGLE_API_KEY"))
+    has_groq = bool(os.environ.get("GROQ_API_KEY"))
+    if not (has_gemini or has_groq):
+        raise RuntimeError(
+            "no model provider is configured. Put GOOGLE_API_KEY (free: "
+            "https://aistudio.google.com/apikey) and/or GROQ_API_KEY "
+            "(https://console.groq.com/keys) in .env, or use --provider ollama."
+        )
+    if has_gemini and has_groq:
+        from .fallback import FallbackAdapter
+        from .gemini import GeminiAdapter
+        from .groq import GroqAdapter
+
+        return FallbackAdapter(GeminiAdapter.from_env(), GroqAdapter.from_env())
+    return get_adapter("gemini" if has_gemini else "groq")

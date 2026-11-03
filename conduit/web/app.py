@@ -86,7 +86,7 @@ class DemoHost:
         adapter: Any = None,
     ) -> None:
         self._repo_root = repo_root
-        self._provider = provider or os.environ.get("LLM_PROVIDER", "gemini")
+        self._provider = provider or os.environ.get("LLM_PROVIDER", "auto")
         self._semaphore = asyncio.Semaphore(MAX_CONCURRENT_TURNS)
         # Injectable so tests drive the deterministic StubAdapter (no network).
         self._adapter: Any = adapter

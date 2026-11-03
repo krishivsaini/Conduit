@@ -38,9 +38,18 @@ def assert_no_traceback(proc: subprocess.CompletedProcess) -> None:
 # --- Configuration problems: a sentence and an exit status, not a traceback --
 
 
-def test_missing_api_key_explains_how_to_get_one(tmp_path, sample_repo):
+def test_no_keys_at_all_explains_both_options(tmp_path, sample_repo):
     # cwd=tmp_path so no project .env is found, as on a fresh clone.
     proc = run_cli("--repo-root", str(sample_repo), "hi",
+                   cwd=tmp_path, drop=("GOOGLE_API_KEY", "GROQ_API_KEY", "LLM_PROVIDER"))
+    assert proc.returncode == 2
+    assert "no model provider is configured" in proc.stderr
+    assert "aistudio.google.com" in proc.stderr and "console.groq.com" in proc.stderr
+    assert_no_traceback(proc)
+
+
+def test_missing_api_key_explains_how_to_get_one(tmp_path, sample_repo):
+    proc = run_cli("--repo-root", str(sample_repo), "--provider", "gemini", "hi",
                    cwd=tmp_path, drop=("GOOGLE_API_KEY", "LLM_PROVIDER"))
     assert proc.returncode == 2
     assert "GOOGLE_API_KEY is not set" in proc.stderr

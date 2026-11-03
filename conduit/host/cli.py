@@ -29,10 +29,11 @@ from typing import Any, TextIO
 
 from .client import MCPCodebaseClient, conduit_server_params
 from .llm.adapter import LLMAdapter, get_adapter
+from .llm.fallback import FallbackAdapter
 from .llm.pacing import Paced, is_per_day_limit, is_rate_limit
 from .loop import LoopResult, ToolInvocation, run_turn
 
-PROVIDERS = ("gemini", "groq", "ollama")
+PROVIDERS = ("auto", "gemini", "groq", "ollama")
 
 # A refusal only means something if it says which guarantee fired. Same naming
 # as the web demo, keyed off the server's actionable error text.
@@ -154,6 +155,11 @@ def _explain(provider: str, exc: Exception) -> str:
     text = str(exc)
     lowered = text.lower()
     if is_rate_limit(text):
+        if provider == "auto":
+            return (
+                "both Gemini and Groq are rate limited right now. Retry in a minute, "
+                "or use --provider ollama."
+            )
         if provider == "groq":
             span = "today" if is_per_day_limit(text) else "this minute"
             return (
@@ -221,7 +227,10 @@ async def _run(
     async with MCPCodebaseClient(conduit_server_params(str(repo_root), deny=deny)) as client:
         tools = await client.discover_tools()
         names = ", ".join(t.name for t in tools)
-        print(style.dim(f"provider: {provider} · tools discovered from the server: {names}"), flush=True)
+        label = provider
+        if isinstance(adapter, FallbackAdapter):
+            label = "auto (gemini, then groq if gemini is rate limited)"
+        print(style.dim(f"provider: {label} · tools discovered from the server: {names}"), flush=True)
 
         if question is not None:
             print(flush=True)
@@ -236,6 +245,26 @@ async def _run(
                 return 0
             if line:
                 await _ask(client, adapter, provider, line, style)
+
+
+def _paced(adapter: LLMAdapter, name: str) -> LLMAdapter:
+    """Wait out per-minute limits: a multi-step question can trip one partway
+    through, and failing a question that's half done helps no one."""
+    return Paced(adapter, on_wait=lambda s: print(
+        f"\r(rate limited by {name}: waiting {s:.0f}s)", file=sys.stderr, flush=True))
+
+
+def _with_rate_limit_handling(adapter: LLMAdapter, provider: str) -> LLMAdapter:
+    if not isinstance(adapter, FallbackAdapter):
+        return _paced(adapter, provider) if provider in ("gemini", "groq", "auto") else adapter
+    # Gemini's per-minute limit is waited out, so it stays free; only a spent
+    # daily quota moves the question to Groq.
+    def notice(reason: str) -> None:
+        print(f"\r(Gemini {reason}: continuing on Groq, {adapter.fallback.model})",
+              file=sys.stderr, flush=True)
+
+    return FallbackAdapter(_paced(adapter.primary, "gemini"), _paced(adapter.fallback, "groq"),
+                           on_switch=notice)
 
 
 def _fail(message: str) -> None:
@@ -258,8 +287,9 @@ def main() -> None:
     parser.add_argument(
         "--provider",
         choices=PROVIDERS,
-        default=os.environ.get("LLM_PROVIDER", "gemini"),
-        help="LLM provider (default: $LLM_PROVIDER or gemini)",
+        default=os.environ.get("LLM_PROVIDER", "auto"),
+        help="LLM provider (default: $LLM_PROVIDER or auto: Gemini's free tier, "
+        "then Groq when Gemini is rate limited, using whichever keys are set)",
     )
     parser.add_argument(
         "--deny",
@@ -285,11 +315,7 @@ def main() -> None:
         adapter = get_adapter(args.provider)
     except (RuntimeError, ValueError) as exc:
         _fail(str(exc))
-    if args.provider in ("gemini", "groq"):
-        # A multi-step question can trip a per-minute limit partway through;
-        # wait it out rather than failing a question that's half done.
-        adapter = Paced(adapter, on_wait=lambda s: print(
-            f"\r(rate limited by {args.provider}: waiting {s:.0f}s)", file=sys.stderr, flush=True))
+    adapter = _with_rate_limit_handling(adapter, args.provider)
 
     question = " ".join(args.question) if args.question else None
     try:

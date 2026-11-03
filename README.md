@@ -39,7 +39,8 @@ uv run conduit "Which file defines the authenticate function, and what does it r
 LLM_PROVIDER=ollama OLLAMA_MODEL=<your-model> uv run conduit "List the functions in src/payments.py"
 
 # For Gemini (free tier): put GOOGLE_API_KEY in .env (see .env.example), then run `uv run conduit`.
-# For Groq (paid, much higher limits): put GROQ_API_KEY in .env, then:
+# Add GROQ_API_KEY too, and the default (auto) falls back to Groq when Gemini's
+# free tier runs out. Or use Groq only:
 uv run conduit --provider groq "Where is the minimum charge enforced?"
 
 # Point it at your own repo. --deny adds to the built-in deny-list (repeatable):
@@ -98,7 +99,11 @@ proposition demonstrated, not asserted.
 The host loop calls **one adapter interface** and never a provider SDK.
 `LLM_PROVIDER` (or `--provider`) selects Gemini (`gemini-3.6-flash` by default,
 free tier), Groq (`openai/gpt-oss-120b` by default, paid limits) or a local Ollama
-model; `GEMINI_MODEL` / `GROQ_MODEL` / `OLLAMA_MODEL` pick the model. A
+model. The default, `auto`, uses Gemini's free tier and moves a question to Groq
+when Gemini is rate limited, if a Groq key is set; it tries Gemini again after a
+cooldown, and only at the start of a question. Only rate limits switch provider:
+any other error is reported, not hidden. Naming a provider means only that one,
+which is why the eval always does; `GEMINI_MODEL` / `GROQ_MODEL` / `OLLAMA_MODEL` pick the model. A
 deterministic stub proves the loop is provider-independent in tests. Swapping
 providers changes one env var, no loop code; adding Groq was one new module.
 

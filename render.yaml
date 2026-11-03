@@ -14,10 +14,11 @@ services:
     envVars:
       - key: CONDUIT_REPO_ROOT
         value: /app/sample-repo
+      # auto: Gemini's free tier first, Groq when Gemini is rate limited (only
+      # if GROQ_API_KEY is set). Gemini's quota is per model and per day, and
+      # this key is shared with local eval runs.
       - key: LLM_PROVIDER
-        value: gemini
-      # Free-tier quota is per model and per day, and this key is shared with
-      # local eval runs: a heavy eval day leaves the live demo less to spend.
+        value: auto
       - key: GEMINI_MODEL
         value: gemini-3.6-flash
       # Render sits behind Cloudflare, which sets this to the one address that
@@ -30,4 +31,8 @@ services:
       # Set in the Render dashboard; never committed. Omit it and the demo
       # still serves recorded runs, refusing live ones with a clear message.
       - key: GOOGLE_API_KEY
+        sync: false
+      # Optional, paid: the fallback. Live runs are capped at 8 a day in total
+      # (conduit/web/limits.py), which bounds what it can spend.
+      - key: GROQ_API_KEY
         sync: false

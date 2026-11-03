@@ -190,6 +190,12 @@ adapter.decide(messages, tool_schemas) -> ToolCall(name, arguments) | FinalAnswe
   client code changed. Proven on three providers (Gemini, Groq, a fully-local
   Ollama model) plus the stub. See `tests/test_model_agnostic.py`,
   `tests/test_groq_adapter.py` and `eval/results.md`.
+- `fallback.FallbackAdapter` is the default (`auto`): Gemini's free tier, and
+  Groq when Gemini is rate limited. It is itself just an adapter, so the loop
+  doesn't know it exists. Only rate limits switch; a question that switched
+  finishes on Groq, because Gemini 3 can't continue tool calls it didn't make
+  (its thought signatures); Gemini is tried again at the next question after a
+  cooldown (a minute, or an hour after a daily limit).
 - `pacing.Paced` wraps any adapter to live with per-minute rate limits: it waits
   out a per-minute 429 for the delay the provider names, and re-raises a per-day
   one. A multi-step question makes several calls back to back, so without it a

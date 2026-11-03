@@ -331,3 +331,14 @@ def test_empty_state_does_not_assume_the_two_column_layout():
     """On a phone the trace sits below the questions, not to their left."""
     html = (STATIC / "index.html").read_text()
     assert "on the left" not in html
+
+
+def test_auto_with_no_keys_says_live_questions_are_not_configured(monkeypatch):
+    from conduit.web.app import _friendly_error
+    from conduit.host.llm.adapter import get_adapter
+
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    with pytest.raises(RuntimeError) as exc:
+        get_adapter("auto")
+    assert "not configured on this deployment" in _friendly_error(exc.value)

@@ -61,9 +61,14 @@ read the blueprint, or create a Docker web service manually with:
 - **Dockerfile path** `./Dockerfile`
 - **Health check path** `/api/health`
 - **Environment**: `GOOGLE_API_KEY` (secret, set in the dashboard — never
-  committed), `GEMINI_MODEL=gemini-3.6-flash`, `CONDUIT_REPO_ROOT=/app/sample-repo`
+  committed), `LLM_PROVIDER=auto`, `GEMINI_MODEL=gemini-3.6-flash`,
+  `CONDUIT_REPO_ROOT=/app/sample-repo`, `CONDUIT_CLIENT_IP_HEADER=cf-connecting-ip`
+- **Optional fallback**: `GROQ_API_KEY` (secret). With it, `auto` moves a live
+  question to Groq when Gemini's free tier is rate limited. Groq is paid, but
+  live runs are capped at 8 a day in total, which bounds the bill; set a
+  spending limit in the Groq console as a backstop.
 
-Without `GOOGLE_API_KEY` the service still runs and serves recorded runs; live
+Without any model key the service still runs and serves recorded runs; live
 questions return *"Live questions are not configured on this deployment."*
 
 ## Frontend on a static host
