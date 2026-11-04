@@ -2,7 +2,14 @@
 
 **A secure Model Context Protocol (MCP) server that lets any AI model read a codebase, and can't be talked into leaking its secrets.**
 
-[![tests](https://github.com/krishivsaini/Conduit/actions/workflows/ci.yml/badge.svg)](https://github.com/krishivsaini/Conduit/actions/workflows/ci.yml) · `Python 3.10+` · `MCP` · `MIT`
+[![CI](https://github.com/krishivsaini/Conduit/actions/workflows/ci.yml/badge.svg)](https://github.com/krishivsaini/Conduit/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![MCP server](https://img.shields.io/badge/MCP-server-000000)](https://modelcontextprotocol.io)
+[![Security: tested, not asserted](https://img.shields.io/badge/security-tested%2C%20not%20asserted-2ea44f)](#security-model)
+[![Models: Gemini · Groq · Ollama](https://img.shields.io/badge/models-Gemini%20%C2%B7%20Groq%20%C2%B7%20Ollama-8A63D2)](#model-agnostic)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+**[How it works](#how-it-works)** · **[Security model](#security-model)** · **[Evaluation](#evaluation)** · **[What I found by breaking it](#what-i-found-by-trying-to-break-it)** · **[Architecture](ARCHITECTURE.md)**
 
 Conduit is the server side of MCP, the protocol AI assistants use to reach tools
 and data. It exposes a repository through four read-only tools (search, read,
@@ -24,7 +31,8 @@ same CLI on Gemini and on a local model, and the deny-list refusing `.env`.*
 | **Security, tested, not asserted** | 5 boundaries, each with a test that attempts the violation; new tests are mutation-tested (the bug is put back and the test must fail) |
 | **Prompt injection** | A poisoned repo tells the model to leak a secret. A scripted model that obeys fully, and a real one (`gpt-oss-120b`), both end with the secret appearing nowhere |
 | **Model-agnostic** | One adapter interface; Gemini, Groq and Ollama behind it. The default uses Gemini's free tier and falls back to Groq when it runs out |
-| **Tested** | 293 tests in CI on Python 3.10 and 3.13, no API keys needed; real model runs are recorded and replayed against the live server on every push |
+| **Stays on topic** | The public demo declines questions that aren't about the repo, at no extra model cost: 0 false refusals, and 9/10 (Groq) and 10/10 (Gemini) off-topic questions declined, including ones dressed up as on-topic ([details](#staying-on-topic)) |
+| **Tested** | 351 tests in CI on Python 3.10 and 3.13, no API keys needed; real model runs are recorded and replayed against the live server on every push |
 
 ## What I found by trying to break it
 
@@ -162,6 +170,35 @@ uv run python eval/run_eval.py --provider groq --baseline       # either, withou
 The default Gemini provider is paced for the free tier's 5-a-minute limit and
 resumes across days; earlier partial Gemini runs are kept in `eval/`.
 
+## Staying on topic
+
+A public demo shouldn't be a free general-purpose chatbot on someone else's
+quota. The web demo adds a scope rule to the system prompt: answer questions
+about the served repository, and decline anything else with an `OFF_TOPIC:`
+marker, which the page shows as "Declined: not about this repository".
+
+- **In the host, not the server.** The MCP server never sees the question, only
+  tool calls, and its boundaries hold whatever is asked. Scope is a deployment
+  concern, so it lives in the web host (and behind `--scoped` in the CLI).
+- **No extra model calls.** The model declines in the same call it would answer
+  in. A classifier in front of every question would double usage on a free tier.
+- **Measured both ways.** [`eval/evaluation.scope.xml`](eval/evaluation.scope.xml)
+  has questions that must be answered (some casual, or about security, so an
+  over-eager rule would wrongly decline them) and questions that must be
+  declined, half of them using the repo as a pretext ("this repo handles
+  payments, so which stocks should I buy?").
+
+| Model | On-topic answered correctly | False refusals | Off-topic declined | Disguised, declined |
+|---|---|---|---|---|
+| `gpt-oss-120b` (Groq) ([results](eval/results.scope.md)) | 8/8 | 0 | 5/5 | 4/5 |
+| `gemini-3.6-flash` | 4/4 so far | 0 | 5/5 | 5/5 |
+
+Gemini's last 4 on-topic questions wait on its daily quota. Groq's one miss was
+the "write a LinkedIn scraper" request: the model refused it under its own
+safety policy instead of with the marker, so it was declined, but the page shows
+it as a plain answer. It's a prompt rule, so it's a strong default, not a
+guarantee; the server's guarantees don't depend on it.
+
 ## Model-agnostic
 
 The host loop calls one interface, `decide(messages, tools) -> ToolCall | FinalAnswer`,
@@ -222,10 +259,10 @@ It's deployed on Render behind Cloudflare; see [docs/deploy.md](docs/deploy.md).
 
 ```
 conduit/server/   the MCP server: tools/, resources/, security/, indexer, access
-conduit/host/     the assistant: MCP client, tool loop, CLI, llm/ (one adapter per provider)
+conduit/host/     the assistant: MCP client, tool loop, CLI, scope rule, llm/ (one adapter per provider)
 conduit/web/      the deployable demo: Starlette app, rate limits, static page
 tests/            security, discovery, tools, real-repo, prompt injection, eval, replay
-eval/             both question sets, the runner, results and recorded traces
+eval/             the question sets (sample, this repo, scope), runner, results, traces
 sample-repo/      the bundled target, with intentionally fake secrets
 ```
 

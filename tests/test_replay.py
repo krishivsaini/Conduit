@@ -23,19 +23,20 @@ TRANSCRIPTS = json.loads((ROOT / "conduit" / "web" / "static" / "transcripts.jso
 
 
 def _eval_runs() -> list[tuple[str, dict]]:
-    """Real sample-suite eval runs that recorded a trace, from every provider
-    (eval/results.<provider>.json). Baselines have no trace; the conduit suite
-    serves this repo, which changes every commit, so it isn't replayable."""
+    """Real eval runs on the frozen sample repo that recorded a trace, from every
+    provider (eval/results[.scope].<provider>.json). Baselines have no trace; the
+    conduit suite serves this repo, which changes every commit, so it isn't
+    replayable."""
     from tests.eval_helpers import load_run_eval
 
     ev = load_run_eval()
     runs = []
     for path in sorted((ROOT / "eval").glob("results.*.json")):
-        provider = path.name.split(".")[1]
-        if provider == "conduit" or ".baseline." in path.name:
+        label = ".".join(path.name.split(".")[1:-1])  # gemini, groq, scope.groq, ...
+        if label.startswith("conduit") or label.endswith("baseline"):
             continue
         rows = ev.load_checkpoint(path).values()  # other rubrics load as empty
-        runs += [(provider, r) for r in rows if r.get("reply") and not r.get("error")]
+        runs += [(label, r) for r in rows if r.get("reply") and not r.get("error")]
     return runs
 
 

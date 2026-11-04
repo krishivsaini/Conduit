@@ -36,6 +36,7 @@ from starlette.staticfiles import StaticFiles
 
 from conduit.host.client import MCPCodebaseClient, conduit_server_params
 from conduit.host.llm.adapter import get_adapter
+from conduit.host.scope import apply_scope, declined
 from conduit.host.loop import run_turn
 
 from .limits import RateLimiter
@@ -84,12 +85,18 @@ class DemoHost:
         repo_root: Path,
         provider: str | None = None,
         adapter: Any = None,
+        scoped: bool | None = None,
     ) -> None:
         self._repo_root = repo_root
         self._provider = provider or os.environ.get("LLM_PROVIDER", "auto")
+        # A public demo answers questions about the repo, not anything at all
+        # (conduit/host/scope.py). CONDUIT_SCOPE=off turns it off.
+        self._scoped = scoped if scoped is not None else os.environ.get("CONDUIT_SCOPE", "on") != "off"
         self._semaphore = asyncio.Semaphore(MAX_CONCURRENT_TURNS)
         # Injectable so tests drive the deterministic StubAdapter (no network).
         self._adapter: Any = adapter
+        if adapter is not None and self._scoped:
+            apply_scope(adapter)
 
     @property
     def provider(self) -> str:
@@ -99,6 +106,8 @@ class DemoHost:
         """Build the adapter lazily so a missing API key disables only live runs."""
         if self._adapter is None:
             self._adapter = get_adapter(self._provider)
+            if self._scoped:
+                apply_scope(self._adapter)
         return self._adapter
 
     def _connect(self) -> MCPCodebaseClient:
@@ -139,9 +148,11 @@ class DemoHost:
                         max_steps=WEB_MAX_STEPS,
                         on_step=lambda inv: queue.put_nowait(("step", asdict(inv))),
                     )
-                queue.put_nowait(
-                    ("answer", {"text": result.answer, "hit_step_limit": result.hit_step_limit})
-                )
+                queue.put_nowait(("answer", {
+                    "text": result.answer,
+                    "hit_step_limit": result.hit_step_limit,
+                    "declined": declined(result.answer) if self._scoped else None,
+                }))
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 — provider/transport errors reach the page

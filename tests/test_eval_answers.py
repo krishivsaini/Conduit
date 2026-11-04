@@ -203,3 +203,38 @@ def test_conduit_answer_matches_the_code(conduit_truth, index):
     question, expected = CONDUIT_PAIRS[index - 1]
     actual = str(conduit_truth[index])
     assert actual == expected, f"Q{index}: key says {expected!r}, code says {actual!r}\n  {question}"
+
+
+
+# --- The scope suite's on-topic questions ------------------------------------
+
+SCOPE_FILE = ROOT / "eval" / "evaluation.scope.xml"
+
+
+def test_scope_on_topic_answers_match_the_code(repo):
+    auth, payments, utils = repo["auth"], repo["payments"], repo["utils"]
+
+    def refund_rejects(cents):
+        try:
+            payments.refund("acct", cents)
+        except payments.PaymentError:
+            return True
+        return False
+
+    truth = {
+        1: _rel(payments.charge),
+        2: payments.MIN_CHARGE_CENTS,
+        3: refund_rejects(10),
+        # 4 asks whether the server reads .env: a server property, proven by
+        # tests/test_security_denylist.py.
+        5: next(u for u, d in auth._USERS.items() if d["role"] == "admin"),
+        6: utils.format_currency(1050),
+        7: auth.authenticate("alice", "definitely-wrong"),
+        8: utils.redact.__name__,
+    }
+    pairs = load_run_eval().parse_pairs(SCOPE_FILE)
+    kinds = load_run_eval().parse_kinds(SCOPE_FILE)
+    on_topic = [i for i, k in enumerate(kinds, 1) if k == "on-topic"]
+    assert set(truth) | {4} == set(on_topic)
+    for i, value in truth.items():
+        assert str(value) == pairs[i - 1][1], f"scope Q{i}: key {pairs[i - 1][1]!r}, code {value!r}"

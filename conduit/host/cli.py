@@ -31,6 +31,7 @@ from .client import MCPCodebaseClient, conduit_server_params
 from .llm.adapter import LLMAdapter, get_adapter
 from .llm.fallback import FallbackAdapter
 from .llm.pacing import Paced, is_per_day_limit, is_rate_limit
+from .scope import apply_scope, declined
 from .loop import LoopResult, ToolInvocation, run_turn
 
 PROVIDERS = ("auto", "gemini", "groq", "ollama")
@@ -143,7 +144,11 @@ def _print_step(index: int, step: ToolInvocation, style: _Style) -> None:
     print(style.dim(f"      {detail[:200]}"), flush=True)
 
 
-def _print_answer(result: LoopResult, style: _Style) -> None:
+def _print_answer(result: LoopResult, style: _Style, scoped: bool = False) -> None:
+    reason = declined(result.answer) if scoped else None
+    if reason is not None:
+        print(style.warn(f"\nDeclined: not about this repository ({reason})."), flush=True)
+        return
     print("\n" + result.answer.strip())
     if result.hit_step_limit:
         print(style.dim("\n(used the full tool budget, then answered from the evidence gathered)"))
@@ -194,7 +199,8 @@ def _explain(provider: str, exc: Exception) -> str:
 
 
 async def _ask(
-    client: MCPCodebaseClient, adapter: LLMAdapter, provider: str, question: str, style: _Style
+    client: MCPCodebaseClient, adapter: LLMAdapter, provider: str, question: str, style: _Style,
+    scoped: bool = False,
 ) -> bool:
     """Run one turn, printing each tool call the moment it lands. True on success."""
     spinner = _Spinner()
@@ -214,13 +220,14 @@ async def _ask(
         print(style.warn(f"\n{_explain(provider, exc)}\n"), file=sys.stderr)
         return False
     await spinner.stop()
-    _print_answer(result, style)
+    _print_answer(result, style, scoped)
     return True
 
 
 async def _run(
     provider: str, adapter: LLMAdapter, repo_root: Path, question: str | None,
     deny: Sequence[str] = (),
+    scoped: bool = False,
 ) -> int:
     """Answer one question (exit status 1 if it failed), or run the REPL."""
     style = _Style(sys.stdout)
@@ -234,7 +241,7 @@ async def _run(
 
         if question is not None:
             print(flush=True)
-            return 0 if await _ask(client, adapter, provider, question, style) else 1
+            return 0 if await _ask(client, adapter, provider, question, style, scoped) else 1
 
         print(style.dim("Ask a question about the repo. Ctrl-D to exit.") + "\n")
         while True:
@@ -244,7 +251,7 @@ async def _run(
                 print()
                 return 0
             if line:
-                await _ask(client, adapter, provider, line, style)
+                await _ask(client, adapter, provider, line, style, scoped)
 
 
 def _paced(adapter: LLMAdapter, name: str) -> LLMAdapter:
@@ -299,6 +306,11 @@ def main() -> None:
         help="Extra pattern the server must never expose, added to its defaults "
         "(repeatable; a trailing / denies a directory). Also: $CONDUIT_DENY",
     )
+    parser.add_argument(
+        "--scoped",
+        action="store_true",
+        help="Decline questions that aren't about the repository, as the web demo does",
+    )
     args = parser.parse_args()
 
     # Check the cheap things before spawning a server. A typo'd path used to
@@ -315,11 +327,13 @@ def main() -> None:
         adapter = get_adapter(args.provider)
     except (RuntimeError, ValueError) as exc:
         _fail(str(exc))
+    if args.scoped:
+        apply_scope(adapter)
     adapter = _with_rate_limit_handling(adapter, args.provider)
 
     question = " ".join(args.question) if args.question else None
     try:
-        status = asyncio.run(_run(args.provider, adapter, repo_root, question, args.deny))
+        status = asyncio.run(_run(args.provider, adapter, repo_root, question, args.deny, args.scoped))
     except KeyboardInterrupt:
         print(file=sys.stderr)
         raise SystemExit(130)

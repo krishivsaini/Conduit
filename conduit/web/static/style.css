@@ -732,3 +732,14 @@ code {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* An off-topic question, declined by the scope rule (conduit/host/scope.py). */
+.declined {
+  border-left: 3px solid var(--ink, currentColor);
+  padding: 0.9rem 1.1rem;
+  margin-top: 1rem;
+  background: var(--paper, transparent);
+}
+.declined-title { font-weight: 600; margin: 0 0 0.35rem; }
+.declined-reason { margin: 0 0 0.35rem; }
+.declined-hint { margin: 0; font-size: 0.85rem; opacity: 0.75; }

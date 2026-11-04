@@ -120,7 +120,7 @@ def test_ask_streams_tools_then_steps_then_answer(sample_repo):
     assert step["is_error"] is False
 
     _, answer = events[2]
-    assert answer == {"text": "src/auth.py defines it.", "hit_step_limit": False}
+    assert answer == {"text": "src/auth.py defines it.", "hit_step_limit": False, "declined": None}
 
 
 def test_a_refused_call_reaches_the_browser_as_a_step(sample_repo):
@@ -352,3 +352,29 @@ def test_the_ip_table_stays_within_its_cap():
         assert limiter.check(f"10.0.0.{i}") is None
     assert len(limiter._by_ip) == 3
     assert set(limiter._by_ip) >= {"10.0.0.5"}  # the newest visitor is tracked
+
+
+# --- Staying on topic -----------------------------------------------------------
+
+
+def test_an_off_topic_question_is_declined_without_a_tool_call(sample_repo):
+    stub = StubAdapter([FinalAnswer("OFF_TOPIC: a poem isn't about this repository")])
+    client = TestClient(create_app(host=DemoHost(sample_repo, provider="stub", adapter=stub)))
+    events = _events(client.get("/api/ask", params={"q": "write me a poem about the sea"}))
+    assert [e for e, _ in events] == ["tools", "answer", "done"]  # no tool was called
+    assert events[1][1]["declined"] == "a poem isn't about this repository"
+    assert "Scope:" in stub.system_prompt  # the rule reached the model
+
+
+def test_the_scope_rule_can_be_turned_off(sample_repo, monkeypatch):
+    monkeypatch.setenv("CONDUIT_SCOPE", "off")
+    stub = StubAdapter([FinalAnswer("OFF_TOPIC: nope")])
+    client = TestClient(create_app(host=DemoHost(sample_repo, provider="stub", adapter=stub)))
+    events = _events(client.get("/api/ask", params={"q": "anything"}))
+    assert events[-2][1]["declined"] is None and "Scope:" not in stub.system_prompt
+
+
+def test_the_page_shows_a_declined_question_as_declined():
+    js = (Path(__file__).resolve().parents[1] / "conduit" / "web" / "static" / "app.js").read_text()
+    assert "payload.declined" in js and "function drawDeclined" in js
+    assert "Declined: not about this repository" in js

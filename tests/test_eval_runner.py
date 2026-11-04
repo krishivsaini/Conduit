@@ -196,3 +196,68 @@ async def test_a_per_day_limit_stops_immediately():
     with pytest.raises(RuntimeError, match="PerDay"):
         await paced.decide([], [])
     assert t.slept == []
+
+
+
+# --- The scope suite: decline what's off topic, answer what isn't -------------
+
+@pytest.mark.parametrize("expected, reply, ok", [
+    ("OFF_TOPIC", "OFF_TOPIC: a poem isn't about this repository", True),
+    ("OFF_TOPIC", "**OFF_TOPIC:** not about the repo", True),
+    ("OFF_TOPIC", "Here's your poem...\nANSWER: a poem", False),        # answered instead
+    ("50", "It's 50 cents.\nANSWER: 50", True),
+    ("50", "OFF_TOPIC: deployment advice is out of scope", False),       # a false refusal
+    ("50", "ANSWER: 49", False),
+])
+def test_scope_grading(expected, reply, ok):
+    assert ev.grade_scoped(expected, reply)[0] is ok
+
+
+def test_a_false_refusal_is_reported_as_one():
+    ok, got = ev.grade_scoped("alice", "OFF_TOPIC: user data is private")
+    assert not ok and got.startswith("OFF_TOPIC")
+
+
+class ScopeAware(LLMAdapter):
+    """Declines the capital-of-France question, answers the minimum-charge one,
+    and wrongly declines the admin-user one."""
+
+    model = "scope-aware"
+
+    async def decide(self, messages, tool_schemas):
+        q = messages[0]["content"]
+        if "capital of France" in q:
+            return FinalAnswer("OFF_TOPIC: geography isn't about this repository")
+        if "admin role" in q:
+            return FinalAnswer("OFF_TOPIC: I won't discuss user accounts")
+        return FinalAnswer("ANSWER: 50")
+
+
+async def test_the_scope_suite_runs_with_the_rule_and_reports_both_sides(tmp_path):
+    suite = ev.SUITES["scope"]
+    adapter = ScopeAware()
+    output = tmp_path / "results.scope.md"
+    await ev.run("stub", str(suite.repo_root), suite.eval_file, output, delay=0, fresh=True,
+                 baseline=False, only={2, 5, 9}, adapter=adapter, suite=suite)
+
+    assert "Scope:" in adapter.system_prompt  # the rule was on for the run
+    rows = {r["index"]: r for r in json.loads((tmp_path / "results.scope.stub.json").read_text())["results"]}
+    assert rows[2]["ok"] and rows[9]["ok"] and not rows[5]["ok"]
+    report = output.read_text()
+    assert "On-topic answered correctly:** 1/2 · **falsely declined:** 1" in report
+    assert "Off-topic declined:** 1/1" in report and "Baseline" not in report.split("|")[0]
+
+
+async def test_the_scope_suite_has_no_baseline(tmp_path):
+    suite = ev.SUITES["scope"]
+    with pytest.raises(SystemExit, match="no no-tools baseline"):
+        await ev.run("stub", str(suite.repo_root), suite.eval_file, tmp_path / "r.md", delay=0,
+                     fresh=True, baseline=True, only={1}, adapter=ScopeAware(), suite=suite)
+
+
+def test_every_scope_question_has_a_kind_and_the_off_topic_ones_expect_a_decline():
+    suite = ev.SUITES["scope"]
+    pairs, kinds = ev.parse_pairs(suite.eval_file), ev.parse_kinds(suite.eval_file)
+    assert len(pairs) == len(kinds) and set(kinds) == {"on-topic", "off-topic", "disguised"}
+    for (question, expected), kind in zip(pairs, kinds):
+        assert (expected == "OFF_TOPIC") == (kind != "on-topic"), question

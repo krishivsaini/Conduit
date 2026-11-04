@@ -186,6 +186,18 @@ function drawAnswer(text, meta) {
   return wrap;
 }
 
+/* An off-topic question is declined by design, not failed: say so plainly,
+ * in the same voice as a security refusal. */
+function drawDeclined(reason) {
+  const box = h("div", "declined");
+  box.append(h("p", "declined-title", "Declined: not about this repository"));
+  box.append(h("p", "declined-reason", reason));
+  box.append(h("p", "declined-hint",
+    "This demo answers questions about the sample repo's code. Try one of the preset questions."));
+  el.trace.append(box);
+  return box;
+}
+
 function working(label) {
   const box = h("div", "working");
   box.append(h("span", "working-dot"));
@@ -348,6 +360,10 @@ async function runLive(question) {
         } else if (event === "answer") {
           spinner.remove();
           answered = true;
+          if (payload.declined) {
+            drawDeclined(payload.declined);
+            continue;
+          }
           drawAnswer(
             payload.text,
             payload.hit_step_limit

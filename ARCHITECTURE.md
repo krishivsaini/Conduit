@@ -196,6 +196,11 @@ adapter.decide(messages, tool_schemas) -> ToolCall(name, arguments) | FinalAnswe
   finishes on Groq, because Gemini 3 can't continue tool calls it didn't make
   (its thought signatures); Gemini is tried again at the next question after a
   cooldown (a minute, or an hour after a daily limit).
+- `scope.apply_scope` adds a scope rule to an adapter's system prompt for the
+  public demo: answer questions about the repository, decline anything else
+  with an `OFF_TOPIC:` marker in the same call (no extra model calls). It is a
+  host concern; the server never sees the question. Measured by
+  `eval/evaluation.scope.xml`, false refusals included.
 - `pacing.Paced` wraps any adapter to live with per-minute rate limits: it waits
   out a per-minute 429 for the delay the provider names, and re-raises a per-day
   one. A multi-step question makes several calls back to back, so without it a
