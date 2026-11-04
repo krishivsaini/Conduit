@@ -342,3 +342,13 @@ def test_auto_with_no_keys_says_live_questions_are_not_configured(monkeypatch):
     with pytest.raises(RuntimeError) as exc:
         get_adapter("auto")
     assert "not configured on this deployment" in _friendly_error(exc.value)
+
+
+def test_the_ip_table_stays_within_its_cap():
+    """Six visitors all inside the window, a cap of three: the table must not
+    grow to six (it used to: pruning only drops expired buckets)."""
+    limiter = RateLimiter(per_ip=5, per_ip_window=3600, global_daily=100, clock=lambda: 1.0, max_tracked=3)
+    for i in range(6):
+        assert limiter.check(f"10.0.0.{i}") is None
+    assert len(limiter._by_ip) == 3
+    assert set(limiter._by_ip) >= {"10.0.0.5"}  # the newest visitor is tracked

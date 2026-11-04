@@ -224,8 +224,9 @@ async def tools(request: Request) -> JSONResponse:
 async def ask(request: Request) -> StreamingResponse | JSONResponse:
     """Stream one live turn as Server-Sent Events.
 
-    GET (not POST) so the browser can use EventSource directly; the turn is
-    read-only, which is what the whole server guarantees.
+    GET, because the turn is read-only, which is what the whole server
+    guarantees. The page reads the stream with fetch, not EventSource, so it
+    can tell a refused request (a JSON error with a status) from a stream.
     """
     question = (request.query_params.get("q") or "").strip()
     if not question:

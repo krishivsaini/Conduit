@@ -4,10 +4,9 @@ Annotation: readOnlyHint=True. Returns structured output (path, line span,
 total lines, truncation flag, content). Bad inputs produce actionable errors,
 never a stack trace.
 
-Path confinement here is a MINIMAL Day-2 guard (``_confine``). The hardened,
-symlink-aware defense and its violation test move to
-``conduit.server.security.boundary`` on Day 3, and the deny-list is wired in on
-Day 4. Until then this guard already refuses absolute paths and ``..`` escapes.
+Every path goes through ``conduit.server.access``: repo-root confinement
+(symlink-aware), the secrets deny-list, then the repo's own exclusions, before
+anything is read.
 """
 
 from __future__ import annotations

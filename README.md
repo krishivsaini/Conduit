@@ -1,257 +1,238 @@
 # Conduit
 
-**An MCP server that safely exposes a codebase, plus a model-agnostic assistant that discovers its tools at runtime.**
+**A secure Model Context Protocol (MCP) server that lets any AI model read a codebase, and can't be talked into leaking its secrets.**
 
-Conduit is a [Model Context Protocol](https://modelcontextprotocol.io) server
-(Python + FastMCP) that exposes a code repository through four read-only tools —
-**search, read, symbol lookup, and diff** — and one resource, behind **hard
-security boundaries: repo-root confinement, a secrets deny-list, and a read-only
-posture enforced at startup, each proven by a test that attempts a violation and asserts
-it fails.** A model-agnostic host (Gemini free tier **or** a fully-local Ollama
-model) discovers the server's tools at runtime and drives them to answer
-codebase questions.
+[![tests](https://github.com/krishivsaini/Conduit/actions/workflows/ci.yml/badge.svg)](https://github.com/krishivsaini/Conduit/actions/workflows/ci.yml) · `Python 3.10+` · `MCP` · `MIT`
 
-> The signal is **building the MCP integration layer, not consuming it** —
-> tool-vs-resource design, capability negotiation, transport, and (the
-> differentiator) security boundaries around exposing a filesystem over a protocol.
-
-[![tests](https://github.com/krishivsaini/Conduit/actions/workflows/ci.yml/badge.svg)](https://github.com/krishivsaini/Conduit/actions/workflows/ci.yml) · `Python 3.10+` · `MIT`
-
-**[Architecture & security model →](ARCHITECTURE.md)** · **[Evaluation results →](eval/results.md)**
+Conduit is the server side of MCP, the protocol AI assistants use to reach tools
+and data. It exposes a repository through four read-only tools (search, read,
+symbol lookup, diff) and one resource, behind security boundaries that each have
+a test that tries to break them. A model-agnostic assistant discovers those
+tools at runtime and uses them to answer questions about the code, on Gemini,
+Groq or a fully local model.
 
 https://github.com/user-attachments/assets/158b682b-d740-428a-8b23-3409ed3528c9
 
-*Twenty-one seconds: a tool added to the server and called by an unmodified
-client, the same CLI running on Gemini and on a fully local model, and the
-deny-list refusing `.env`.*
+*21 seconds: a tool added to the server and called by an unmodified client, the
+same CLI on Gemini and on a local model, and the deny-list refusing `.env`.*
 
----
+## At a glance
+
+| | |
+|---|---|
+| **Answers with the server vs without** | **20/20 vs 5/20** on the sample repo, **9/10 vs 2/10** on this repository, same model (`gpt-oss-120b`), strict exact-match grading ([details](#evaluation)) |
+| **Security, tested, not asserted** | 5 boundaries, each with a test that attempts the violation; new tests are mutation-tested (the bug is put back and the test must fail) |
+| **Prompt injection** | A poisoned repo tells the model to leak a secret. A scripted model that obeys fully, and a real one (`gpt-oss-120b`), both end with the secret appearing nowhere |
+| **Model-agnostic** | One adapter interface; Gemini, Groq and Ollama behind it. The default uses Gemini's free tier and falls back to Groq when it runs out |
+| **Tested** | 293 tests in CI on Python 3.10 and 3.13, no API keys needed; real model runs are recorded and replayed against the live server on every push |
+
+## What I found by trying to break it
+
+Most of the engineering here came from attacking my own claims, then fixing what
+gave way. Each fix has a test that fails if the bug comes back.
+
+- **The rate limit could be bypassed with one header.** The demo limited visitors
+  by `X-Forwarded-For`, which a client can write. Behind Cloudflare and Render the
+  real address is in `CF-Connecting-IP`, so the limiter now trusts only that.
+- **`.gitignore` gave away the private files.** It's served like any file, and it
+  lists the names of what a repo keeps private, which `read_file` would then
+  open. The server now presents one view: what isn't listed can't be read.
+- **A deny pattern could be silently dropped.** MCP's stdio client passes a server
+  only `HOME`, `PATH` and a few other variables, so a `CONDUIT_DENY` set in the
+  user's shell never reached it. The host now forwards it explicitly.
+- **Real models sent arguments the tools don't take, and FastMCP ignored them.**
+  `read_file(line_start=1, line_end=3)` returned the whole file, and 26 such
+  calls turned up across two eval runs. The server now refuses them and names the right argument
+  ("did you mean `start_line`?"), and the tools gained the folder scoping the
+  model kept asking for.
+- **The read-only check missed 14 of 20 ways to write a file.** The static scan
+  caught `open(..., "w")` but not `Path.open("w")`, `from os import system` or
+  `os.O_WRONLY`. It's now tested against all 20.
+- **My first baseline was unfair.** It told the model to use tools and then gave
+  it none, so the model said "let's search…" and stopped: 0/10. With a prompt
+  that says it has no tools, the honest number is 2/10.
+
+## How it works
+
+```mermaid
+flowchart LR
+    U[You: CLI or web demo] --> H[Host loop]
+    H <-->|"decide(messages, tools)"| A[Model adapter<br/>Gemini · Groq · Ollama]
+    H <-->|MCP over stdio| S[Conduit server]
+    S --> B{Boundaries<br/>confine → deny-list → .gitignore}
+    B -->|allowed| I[(Repo index<br/>lexical + AST symbols)]
+    B -.->|refused, with the reason| H
+```
+
+1. The host starts the server and asks it what it offers. **No tool names are
+   hardcoded**; a test adds a tool the client has never seen, and the
+   unmodified client calls it.
+2. The model gets the question, the discovered tool schemas and the repo tree
+   (an MCP *resource*, given as context), and picks a tool.
+3. Every path the model sends goes through confinement, the deny-list and the
+   repo's own exclusions **before** anything is read. A refusal goes back to
+   the model as data it can reason with.
+4. Repeat until the model answers, within a step budget. When the budget runs
+   out, the model is asked once more with no tools offered, so the evidence it
+   gathered becomes an answer instead of being thrown away.
+
+Full design, the request flow and the trade-offs: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Quickstart
 
 ```bash
-uv sync                       # install (the fully-local path needs no API key)
+uv sync
 
-# Ask the assistant a question about the bundled sample repo:
+# Put GOOGLE_API_KEY (free) and/or GROQ_API_KEY in .env (see .env.example), then:
 uv run conduit "Which file defines the authenticate function, and what does it return on failure?"
 
-# Fully local, no API key (needs `ollama serve` + a tool-capable model pulled):
-LLM_PROVIDER=ollama OLLAMA_MODEL=<your-model> uv run conduit "List the functions in src/payments.py"
+# Fully local, no API key (needs `ollama serve` and a tool-capable model):
+uv run conduit --provider ollama "List the functions in src/payments.py"
 
-# For Gemini (free tier): put GOOGLE_API_KEY in .env (see .env.example), then run `uv run conduit`.
-# Add GROQ_API_KEY too, and the default (auto) falls back to Groq when Gemini's
-# free tier runs out. Or use Groq only:
-uv run conduit --provider groq "Where is the minimum charge enforced?"
-
-# Point it at your own repo. --deny adds to the built-in deny-list (repeatable):
+# Point it at your own repo; --deny adds to the built-in deny-list:
 uv run conduit --repo-root ~/code/my-project --deny 'secrets/' "Where is the retry logic?"
+
+# Run the test suite: offline, no keys, no model calls
+uv sync --extra dev && uv run pytest
 ```
 
-On a real repository the server respects the repo's `.gitignore`, keeps its
-index current as files change, pages long results, and collapses the tree to
-fit the model's context. See [ARCHITECTURE.md](ARCHITECTURE.md#the-index-on-a-real-repository).
-
-The server also runs standalone over stdio and works with the MCP Inspector:
+The server also runs on its own and works with any MCP client, such as the MCP Inspector:
 
 ```bash
-uv run conduit-server --repo-root ./sample-repo
 npx @modelcontextprotocol/inspector uv run conduit-server --repo-root ./sample-repo
 ```
 
-## Security model (the differentiator)
-
-Every boundary is enforced in code and **proven by a test that attempts a
-violation and asserts it fails** — security tested, not asserted.
+## Security model
 
 | Boundary | What it guarantees | Proven by |
 |---|---|---|
-| **Repo-root confinement** | resolves `..` *and* symlinks, then refuses anything outside the root | `tests/test_security_traversal.py` — 14 cases incl. symlink escape |
-| **Secrets deny-list** | `.env`, `*.key`, `*.pem`, `.git/`, `id_rsa`, … never read, searched, or listed — matched on the *resolved* path, so a symlink like `notes.txt → .env` is refused too. Add your own with `--deny` or `CONDUIT_DENY`; the defaults can't be removed | `tests/test_security_denylist.py`, `tests/test_real_repo.py` |
-| **Read-only posture** | no tool writes or executes; the server refuses to build if a non-read-only tool is registered | `tests/test_security_readonly.py` — incl. a static scan for writes / `subprocess`, itself tested against 20 ways to write a file or start a process |
-| **The repo's own exclusions** | files the repo's `.gitignore` excludes (nested files and `.git/info/exclude` too) and vendor dirs like `node_modules` are neither listed nor served, so a model can't read `.gitignore` and then open the private files it names. A `!.env` rule can't re-include a secret | `tests/test_real_repo.py` |
-| **Bounded output** | reads are line-range capped; search and symbol listings page; the tree collapses to fit | `tests/test_tools.py`, `tests/test_real_repo.py` |
-
-The bundled [`sample-repo/`](sample-repo/) ships **intentionally fake** secrets
-(`.env`, `service.key`) so the deny-list can be shown refusing them live. All
-client-supplied paths flow through confine → deny-list **before** any read; there
-is no write/execute path anywhere in the server.
+| **Repo-root confinement** | resolves `..` *and* symlinks, then refuses anything outside the root | [`test_security_traversal.py`](tests/test_security_traversal.py): 14 cases, incl. symlink escape |
+| **Secrets deny-list** | `.env`, `*.key`, `*.pem`, `.git/`, `id_rsa`, … are never read, searched or listed. Matched on the *resolved* path, so `notes.txt → .env` is refused too. Deployments can add patterns, never remove the defaults | [`test_security_denylist.py`](tests/test_security_denylist.py), [`test_real_repo.py`](tests/test_real_repo.py) |
+| **Read-only** | no tool writes or executes; the server refuses to start if a non-read-only tool is registered | [`test_security_readonly.py`](tests/test_security_readonly.py): a startup guard test, plus a static scan tested against 20 write/exec patterns |
+| **The repo's own exclusions** | what `.gitignore` excludes (nested files and `.git/info/exclude` too) and vendor dirs are neither listed nor served. A `!.env` rule can't re-include a secret | [`test_real_repo.py`](tests/test_real_repo.py) |
+| **Bounded output** | reads are line-capped; search and symbol listings page; the tree collapses to fit the model's context instead of being cut off | [`test_tools.py`](tests/test_tools.py), [`test_real_repo.py`](tests/test_real_repo.py) |
 
 **Prompt injection.** A repo can contain text written to manipulate the model
-reading it. The system prompt tells the model to treat file contents as data, but
-that's a request, not a guarantee. The guarantee is the server.
-[`tests/test_prompt_injection.py`](tests/test_prompt_injection.py) assumes the
-worst: a README carries an injection, the model obeys it completely and tries
-every route to a planted secret (by name, through a symlink, outside the root,
-by content, through `diff`), then pastes back everything it saw. The secret
-appears nowhere. The server can't stop the model *reading* the injection; it
-stops anything the injection asks for.
-
-## Dynamic discovery
-
-The host hardcodes no tool list — it learns the server's tools at runtime via MCP
-capability negotiation. [`tests/test_dynamic_discovery.py`](tests/test_dynamic_discovery.py)
-proves it: an *augmented* server registers a tool the client has never heard of,
-and the **unmodified** client discovers and calls it. That is the MCP value
-proposition demonstrated, not asserted.
-
-## Model-agnostic
-
-The host loop calls **one adapter interface** and never a provider SDK.
-`LLM_PROVIDER` (or `--provider`) selects Gemini (`gemini-3.6-flash` by default,
-free tier), Groq (`openai/gpt-oss-120b` by default, paid limits) or a local Ollama
-model. The default, `auto`, uses Gemini's free tier and moves a question to Groq
-when Gemini is rate limited, if a Groq key is set; it tries Gemini again after a
-cooldown, and only at the start of a question. Only rate limits switch provider:
-any other error is reported, not hidden. Naming a provider means only that one,
-which is why the eval always does; `GEMINI_MODEL` / `GROQ_MODEL` / `OLLAMA_MODEL` pick the model. A
-deterministic stub proves the loop is provider-independent in tests. Swapping
-providers changes one env var, no loop code; adding Groq was one new module.
+reading it. A system prompt can ask the model to ignore it, but that's a
+request, not a guarantee; the guarantee is the server.
+[`test_prompt_injection.py`](tests/test_prompt_injection.py) plants a secret and
+a README telling the model to leak it, then has a model obey completely: by
+name, through a symlink, outside the root, by searching nearby text, through
+`diff`, then pasting back everything it saw. The secret appears nowhere. An
+opt-in live version (`CONDUIT_LIVE=1 uv run pytest -m live`) runs the same
+attack on a real model: `gpt-oss-120b` recognised the injection on its own, and
+when given a plausible reason to open `.env` it tried, was refused by the
+deny-list, and said so.
 
 ## Evaluation
 
-[`eval/evaluation.xml`](eval/evaluation.xml) holds 20 read-only questions about
-the sample repo. Questions 13–20 take more than one step: following a call
-across files, working out what a function returns for a given input, or
-noticing that a docstring is wrong (`refund` says it "mirrors charge
-validation", but it accepts 10 cents).
-
-- **Strict grading.** The model must end with an `ANSWER: <value>` line, and the
-  value has to match exactly once formatting is normalised. An expected `2` is
-  not satisfied by "12" or by "2 or 3". The grader has its own tests
-  ([`tests/test_eval_runner.py`](tests/test_eval_runner.py)).
-- **An answer key checked against the code.**
-  [`tests/test_eval_answers.py`](tests/test_eval_answers.py) imports the sample
-  repo, runs it, and checks every expected answer against what the code actually
-  does. A typo in the key fails CI instead of mis-grading a model.
-- **A baseline.** `--baseline` asks the same questions with no tools, so the
-  results show what the server adds, not just what the model already knows.
-- **Recorded traces.** Each run keeps its full tool trace, and CI replays it
-  against the live server ([`tests/test_replay.py`](tests/test_replay.py)).
-
-**On a real repository.** A second suite,
-[`eval/evaluation.conduit.xml`](eval/evaluation.conduit.xml), asks 10 questions
-about Conduit itself, with the server serving this checkout and `eval/` added to
-its deny-list so the model can't read the answer key. Each question describes a
-behaviour ("which header does the demo trust for a visitor's IP?"), so the model
-has to find the code among ~350 symbols.
-
-**Results (`openai/gpt-oss-120b` on Groq, strict rubric):**
+Does a model answer questions about code better *with* the server than without
+it? Two question sets, the same model with and without tools, graded strictly.
 
 | Suite | With tools | Same model, no tools |
 |---|---|---|
-| Sample repo, 20 questions ([table](eval/results.md)) | **20/20**, 3.2 tool calls on average | 5/20 |
-| This repository, 10 questions ([table](eval/results.conduit.md)) | **9/10**, 4.5 tool calls on average | 2/10 |
+| Sample repo: 20 questions, 8 of them multi-step ([results](eval/results.md)) | **20/20**, 3.2 tool calls each | 5/20 |
+| This repository: 10 questions, ~350 symbols ([results](eval/results.conduit.md)) | **9/10**, 4.5 tool calls each | 2/10 |
 
-The no-tools passes are guesses that land: True/False questions, and values
-like 429, the standard rate-limit status. Its misses are confident answers about
-other codebases (`ToolOutputMismatchError`, `src/util.c`, `REAL_IP_HEADER`). The
-one miss with tools searched the right folder but ran out of steps before
-finding `MAX_STEPS`.
+Model: `openai/gpt-oss-120b` on Groq. The no-tools passes are guesses that land
+(True/False questions, 429 as the rate-limit status); its misses are confident
+answers about other codebases, such as `REAL_IP_HEADER`. The one miss with tools
+searched the right folder but ran out of steps.
 
-Running a real model changed the server twice. `gpt-oss` guessed argument names
-(`read_file(line_start=…)` for `start_line`), and the server, like FastMCP by
-default, silently ignored them and returned the whole file. It now refuses an
-unknown argument and names the right one ("did you mean `start_line`?"). The
-model also kept asking `search_code` for a `path` it didn't have, and
-`list_symbols` given a folder answered "0 symbols"; both now take a file or
-folder, checked by the same boundaries as any other path.
-Earlier partial runs on the Gemini free tier, stopped by its daily quota, are
-kept in `eval/results.gemini.json` (5/5) and `eval/results.conduit.gemini.json`
-(3/3); the first 12-question run, graded with a lenient substring check, is in
-[`eval/results.gemini.v1.json`](eval/results.gemini.v1.json).
+How the eval is kept honest:
+
+- **Exact grading.** The model ends with `ANSWER: <value>`, which must match
+  exactly once formatting is removed. An expected `2` isn't met by "12" or "2 or 3".
+- **An answer key computed from the code.** CI imports the code and recomputes
+  every expected answer, so a typo in the key, or a code change that alters an
+  answer, fails the build.
+- **The model can't read the key.** The real-repo suite serves this checkout
+  with `eval/` on the deny-list.
+- **Multi-step questions with traps.** One docstring says `refund` "mirrors
+  charge validation"; the code accepts a 10-cent refund that `charge` rejects.
+- **Replayable.** Every run keeps its full tool trace; CI replays the sample-repo
+  runs against the live server, so a change in server behaviour fails the build.
 
 ```bash
-uv run python eval/run_eval.py --provider groq      # the runs above
-uv run python eval/run_eval.py                      # gemini free tier; paced, resumes
-uv run python eval/run_eval.py --baseline           # same questions, no tools
-uv run python eval/run_eval.py --questions 18 19 20 # only these
-uv run python eval/run_eval.py --suite conduit      # the real-repo suite
-uv run python eval/run_eval.py --provider ollama    # fully local
+uv run python eval/run_eval.py --provider groq                  # sample repo
+uv run python eval/run_eval.py --provider groq --suite conduit  # this repository
+uv run python eval/run_eval.py --provider groq --baseline       # either, without tools
 ```
+
+The default Gemini provider is paced for the free tier's 5-a-minute limit and
+resumes across days; earlier partial Gemini runs are kept in `eval/`.
+
+## Model-agnostic
+
+The host loop calls one interface, `decide(messages, tools) -> ToolCall | FinalAnswer`,
+and never a provider SDK. Adding Groq was one new module and one line in the
+provider switch; no loop, server or client code changed.
+
+| Provider | Default model | Notes |
+|---|---|---|
+| `auto` (default) | | Gemini's free tier first; Groq when Gemini is rate limited, using whichever keys are set. Only rate limits switch, and a question that switched finishes on Groq |
+| `gemini` | `gemini-3.6-flash` | free tier; per-minute limits are waited out |
+| `groq` | `openai/gpt-oss-120b` | paid, high limits; used for the eval |
+| `ollama` | `mistral` | fully local, no network, no key |
+
+Provider quirks stay inside their adapters: Gemini's thought signatures and
+Groq's tool-call IDs ride through the loop in an opaque field it never reads.
 
 ## Web demo
 
-A browser view of the same loop: it streams each tool call as it lands and
-renders a refusal as a *named boundary* — which guarantee fired, and the test
-that proves it — rather than an error. Try **"Asks for a secret"**: the
-deny-list refuses `.env` and `service.key`, and the model answers from the
-refusal.
-
-The tool chips on the page are fetched from the running server on load, so they
-are runtime discovery you can watch, not a screenshot.
+A browser view of the same loop. It streams each tool call as it happens and
+shows a refusal as a *named boundary*: which guarantee fired, and the test that
+proves it. Preset questions replay real recorded runs, so the page works with
+no quota; free-text questions run live, capped per visitor and per day.
 
 ```bash
-uv sync --extra web
-uv run conduit-web                                # http://localhost:8000
+uv sync --extra web && uv run conduit-web   # http://localhost:8000
 ```
 
-The preset questions replay **real recorded runs** (captured by
-[`scripts/record_transcripts.py`](scripts/record_transcripts.py) from the same
-`eval/evaluation.xml` corpus the eval grades, labelled with the model and date
-that produced them); free-text questions run live and are rate limited. That
-split is deliberate: the Gemini free tier allows 20 requests per day per model
-and a question costs several, so a purely live demo would greet most visitors
-with a quota error. Deployment notes — including the Render blueprint and the
-static/API split — are in [docs/deploy.md](docs/deploy.md).
+It's deployed on Render behind Cloudflare; see [docs/deploy.md](docs/deploy.md).
 
-The demo is a *second consumer* of `host.loop.run_turn`, exactly like the CLI.
-The MCP server is untouched by it, and `conduit/web/` sits outside the tree that
-[`tests/test_security_readonly.py`](tests/test_security_readonly.py) statically
-scans for writes and process spawning.
+## Design decisions
 
-## Reproducing
+- **Why MCP, not plain function-calling?** Function-calling wires tools into one
+  app. MCP exposes them to any compliant client, which discovers them at
+  runtime. Building the server side is the part that's reusable.
+- **Tools vs resources.** Parameterised actions (search, read) are tools; the
+  repo tree is context, so it's a resource the host attaches up front, saving
+  the model a tool call.
+- **No vector search.** Lexical search plus an AST symbol index answers
+  structural questions exactly and can be tested exactly. It's a scope choice,
+  not an oversight.
+- **No index cache on disk.** Measured on 2,700 files: a cold build takes ~2 s
+  and the per-query freshness check ~0.1 s. A cache would save little and would
+  be the server's first write to disk.
+- **Recorded-first demo.** A free-tier quota can't serve every visitor live, so
+  presets replay genuine runs, labelled with the model and date, and CI checks
+  they still match the server.
 
-```bash
-git clone https://github.com/krishivsaini/Conduit.git && cd Conduit
-uv sync --extra dev
-uv run pytest                                     # offline: no API key, no model calls
-uv run conduit-server --repo-root ./sample-repo   # the MCP server over stdio
-```
+## Limitations
 
-Clean clone to green tests runs in well under the 10-minute target. The Ollama
-path needs no network and no API key.
-
-The suite never calls a model, so it runs in CI with no secrets. The host loop
-is tested with a scripted stub, and [`tests/test_replay.py`](tests/test_replay.py)
-replays the demo's recorded **real Gemini runs** against the live server: every
-tool must return byte-for-byte what the model saw, so a change in server
-behaviour fails CI instead of silently going stale in the demo.
-
-## Why MCP, not just function-calling?
-
-Function-calling wires tools into one app; MCP exposes them over a uniform
-interface any compliant client can **discover** and use at runtime — which is why
-the ecosystem is standardizing on it. Building the *server* side is what shows
-you understand that integration layer, not just the consumer side.
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design and the
-tool-vs-resource rationale.
-
-## Limitations (deliberate scope choices)
-
-- **Read-only** — no write / refactor / exec tools, by design (keeps the security surface tractable).
-- **Ignored files aren't served at all** — what the repo's `.gitignore` excludes is neither listed nor readable, so generated code that's gitignored can't be asked about. Serve a different root if you need it. Your global git excludes (`core.excludesFile`) aren't read.
-- **The deny-list matches names, not contents** — it refuses files by path (`.env`, `*.key`, …). A secret pasted into an ordinarily named file such as `settings.py` is served like any other code. Keep secrets in files that match the deny-list, or extend it.
-- **The read-only scan is a strong check, not a proof** — it reads the code as written, so it cannot see through `getattr()`, names built at runtime, or a dependency that writes on the server's behalf. The startup guard is what actually stops a write tool from being exposed.
-- **Single server** — one server built deeply, not a multi-server hub.
-- **Lexical + symbolic search** — no semantic / vector RAG.
-- **`diff` is file-vs-file** — diffing git refs would require executing `git` as a subprocess, which the read-only/no-exec posture forbids.
-- **stdio transport** — streamable HTTP is a documented future option.
+- **Read-only by design**: no write, refactor or exec tools.
+- **The deny-list matches names, not contents**: a key pasted into `settings.py` is served like any code.
+- **The read-only scan is a strong check, not a proof**: it can't see through `getattr()` or a dependency that writes. The startup guard is what stops a write tool being exposed.
+- **Ignored files aren't served at all**, so gitignored generated code can't be asked about. Global git excludes (`core.excludesFile`) aren't read.
+- **`diff` compares files, not git refs**: diffing refs would mean running `git`, which the no-exec posture forbids.
+- **stdio transport only**; streamable HTTP would be the next step.
 
 ## Project layout
 
 ```
-conduit/server/   MCP server: tools/, resources/, security/, indexer, access, errors
-conduit/host/     model-agnostic client: client, loop, cli, llm/ (adapter, gemini, ollama, stub)
-conduit/web/      the deployable demo: Starlette app, rate limits, static frontend
-tests/            security (traversal/denylist/readonly), discovery, model-agnostic, tools, web
-eval/             evaluation.xml + run_eval.py + results.md
-sample-repo/      the bundled demo target (with fake secrets for the deny-list demo)
+conduit/server/   the MCP server: tools/, resources/, security/, indexer, access
+conduit/host/     the assistant: MCP client, tool loop, CLI, llm/ (one adapter per provider)
+conduit/web/      the deployable demo: Starlette app, rate limits, static page
+tests/            security, discovery, tools, real-repo, prompt injection, eval, replay
+eval/             both question sets, the runner, results and recorded traces
+sample-repo/      the bundled target, with intentionally fake secrets
 ```
 
 Design docs: [requirements](docs/requirement.md) · [product design](docs/product_design.md) ·
 [architecture](docs/architecture.md) · [implementation plan](docs/implementation_plan.md) ·
-[deploying the demo](docs/deploy.md).
+[deployment](docs/deploy.md)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).

@@ -206,3 +206,16 @@ async def test_a_scope_goes_through_the_same_boundaries(server, path, refusal):
 async def test_a_null_for_an_unknown_argument_is_ignored(server):
     s = await structured(server, "search_code", {"query": "charge", "file": None})
     assert s["total_matches"] > 0
+
+
+@pytest.mark.parametrize("args, says", [
+    ({"path": "src/auth.py", "start_line": "abc"}, "'start_line' should be a valid integer"),
+    ({"path": "src/auth.py", "start_line": 0}, "'start_line' should be greater than or equal to 1 (got 0)"),
+    ({}, "'path' is required"),
+])
+async def test_a_bad_value_is_explained_in_plain_words(server, args, says):
+    with pytest.raises(ToolError) as exc:
+        await server.call_tool("read_file", args)
+    msg = str(exc.value)
+    assert says in msg and "Its arguments are: path, start_line, end_line" in msg
+    assert "pydantic" not in msg and "type=" not in msg and "validation error for" not in msg

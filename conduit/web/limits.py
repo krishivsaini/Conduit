@@ -1,7 +1,8 @@
 """Rate limiting for the public demo.
 
-The demo runs on a free hosting tier against a free-tier LLM quota, so the
-scarce resource is *upstream model calls*, not CPU. Two independent ceilings:
+The demo runs on a free hosting tier against a free-tier LLM quota (with a paid
+Groq fallback), so the scarce resource is *upstream model calls*, not CPU. Two
+independent ceilings:
 
   * **per-IP** — one visitor cannot burn the day's quota on their own.
   * **global daily** — kept deliberately below the provider's free-tier daily
@@ -29,13 +30,15 @@ PER_IP_WINDOW_SECONDS = 3600
 #
 # Sized against a measured constraint, not a guess: the Gemini free tier allows
 # 20 generate_content requests per day *per model*, and one question costs one
-# request per loop step (2-4 in practice). Eight questions is therefore roughly
-# the real ceiling. Set it higher only alongside a paid key.
+# request per loop step (2-4 in practice). This counts questions, not model
+# calls, so the hard bound is 8 x (MAX_STEPS + 1 forced answer) = 72 calls a day;
+# beyond Gemini's quota they go to the paid Groq fallback, if one is configured.
+# Set it higher only knowing that bound.
 GLOBAL_DAILY_LIMIT = 8
 DAY_SECONDS = 86400
 
-# Stop tracking IPs beyond this many, so a spray of unique addresses cannot
-# grow the table without bound. The global ceiling is the real backstop.
+# A hard cap on tracked IPs, so a spray of unique addresses cannot grow the
+# table without bound: past it, the least recently seen IP is forgotten.
 MAX_TRACKED_IPS = 5000
 
 
@@ -55,11 +58,13 @@ class RateLimiter:
         per_ip_window: float = PER_IP_WINDOW_SECONDS,
         global_daily: int = GLOBAL_DAILY_LIMIT,
         clock: Callable[[], float] = time.monotonic,
+        max_tracked: int = MAX_TRACKED_IPS,
     ) -> None:
         self._per_ip = per_ip
         self._per_ip_window = per_ip_window
         self._global_daily = global_daily
         self._clock = clock
+        self._max_tracked = max_tracked
         self._by_ip: dict[str, deque[float]] = {}
         self._global: deque[float] = deque()
 
@@ -79,8 +84,11 @@ class RateLimiter:
 
         bucket = self._by_ip.get(ip)
         if bucket is None:
-            if len(self._by_ip) >= MAX_TRACKED_IPS:
+            if len(self._by_ip) >= self._max_tracked:
                 self._prune(now)
+            while len(self._by_ip) >= self._max_tracked:
+                stalest = min(self._by_ip, key=lambda k: self._by_ip[k][-1] if self._by_ip[k] else -1.0)
+                del self._by_ip[stalest]
             bucket = self._by_ip.setdefault(ip, deque())
         self._expire(bucket, now, self._per_ip_window)
         if len(bucket) >= self._per_ip:

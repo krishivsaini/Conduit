@@ -361,7 +361,7 @@ def write_report(output: Path, provider: str, eval_file: Path, suite: Suite = SU
 def main() -> None:
     _load_env()
     parser = argparse.ArgumentParser(description="Run the Conduit evaluation through the host")
-    parser.add_argument("--provider", default="gemini", help="gemini | ollama")
+    parser.add_argument("--provider", default="gemini", help="gemini | groq | ollama (one provider, never auto)")
     parser.add_argument("--baseline", action="store_true", help="Same model, no tools, no repo context")
     parser.add_argument("--questions", type=int, nargs="+", help="Only these question numbers")
     parser.add_argument("--suite", choices=sorted(SUITES), default="sample",

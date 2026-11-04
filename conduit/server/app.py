@@ -25,6 +25,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
+from pydantic import ValidationError
 
 from .security.denylist import DEFAULT_DENY_PATTERNS
 
@@ -43,6 +44,12 @@ class ConduitMCP(FastMCP):
         tool = self._tool_manager.get_tool(name)
         if tool is not None:
             unknown_argument_check(name, tool.parameters, arguments)
+            # FastMCP would raise pydantic's raw text (type codes, a docs URL).
+            # Validate the same way first, and say what's wrong in plain words.
+            try:
+                tool.fn_metadata.arg_model.model_validate(tool.fn_metadata.pre_parse_json(arguments))
+            except ValidationError as e:
+                raise ToolError(_explain_invalid(name, tool.parameters, e)) from None
         return await super().call_tool(name, arguments)
 
 
@@ -62,6 +69,19 @@ def unknown_argument_check(tool: str, schema: dict[str, Any], arguments: dict[st
         f"{tool} does not take {', '.join(parts)}. "
         f"Its arguments are: {', '.join(valid) or 'none'}."
     )
+
+
+def _explain_invalid(tool: str, schema: dict[str, Any], error: ValidationError) -> str:
+    problems = []
+    for e in error.errors():
+        field = ".".join(str(part) for part in e["loc"]) or "arguments"
+        if e["type"] == "missing":
+            problems.append(f"'{field}' is required")
+        else:
+            msg = e["msg"].removeprefix("Input ").removeprefix("Value ")
+            problems.append(f"'{field}' {msg} (got {e['input']!r})")
+    valid = ", ".join(schema.get("properties", {})) or "none"
+    return f"{tool}: {'; '.join(problems)}. Its arguments are: {valid}."
 
 
 def _closest(arg: str, valid: list[str]) -> str | None:
