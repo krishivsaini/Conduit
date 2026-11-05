@@ -27,13 +27,13 @@ same CLI on Gemini and on a local model, and the deny-list refusing `.env`.*
 
 | | |
 |---|---|
-| **Answers with the server vs without** | **20/20 vs 5/20** on the sample repo, **10/11 vs 3/11** on this repository, same model (`gpt-oss-120b`), strict exact-match grading ([details](#evaluation)) |
+| **Answers with the server vs without** | **20/20 vs 5/20** on the sample repo, **11/11 vs 3/11** on this repository, same model (`gpt-oss-120b`), strict exact-match grading ([details](#evaluation)) |
 | **Security, tested, not asserted** | 5 boundaries, each with a test that attempts the violation; new tests are mutation-tested (the bug is put back and the test must fail) |
 | **Prompt injection** | A poisoned repo tells the model to leak a secret. A scripted model that obeys fully, and a real one (`gpt-oss-120b`), both end with the secret appearing nowhere |
 | **Model-agnostic** | One adapter interface; Gemini, Groq and Ollama behind it. The default uses Gemini's free tier and falls back to Groq when it runs out |
-| **Stays on topic** | The public demo declines questions that aren't about the repo, at no extra model cost: 0 false refusals, and 9/10 (Groq) and 10/10 (Gemini) off-topic questions declined, including ones dressed up as on-topic ([details](#staying-on-topic)) |
+| **Stays on topic** | The public demo declines questions that aren't about the repo, at no extra model cost: 0 false refusals, and every off-topic question declined in the latest runs on both models (28 of 30 across three Groq runs), including ones dressed up as on-topic ([details](#staying-on-topic)) |
 | **Try it on a real codebase** | The web demo serves the sample repo *and Conduit itself*: ask either one live, or replay recorded runs. The page names the repo and commit it's serving and links to that code ([details](#web-demo)) |
-| **Tested** | 372 tests in CI on Python 3.10 and 3.13, no API keys needed; real model runs are recorded and replayed against the live server on every push |
+| **Tested** | 390 tests in CI on Python 3.10 and 3.13, no API keys needed; real model runs are recorded and replayed against the live server on every push |
 
 ## What I found by trying to break it
 
@@ -51,9 +51,12 @@ gave way. Each fix has a test that fails if the bug comes back.
   user's shell never reached it. The host now forwards it explicitly.
 - **Real models sent arguments the tools don't take, and FastMCP ignored them.**
   `read_file(line_start=1, line_end=3)` returned the whole file, and 26 such
-  calls turned up across two eval runs. The server now refuses them and names the right argument
-  ("did you mean `start_line`?"), and the tools gained the folder scoping the
-  model kept asking for.
+  calls turned up across two eval runs. The server now refuses them and names
+  the right argument ("did you mean `start_line`?"), and the tools gained the
+  folder scoping the model kept asking for. `gpt-oss` kept reordering those two
+  names out of habit, so the Groq adapter now maps a reordered name back when
+  the schema has exactly one match: wasted calls went from 16 of 133 to 0 of 114,
+  and the real-repo suite from 10/11 to 11/11.
 - **The read-only check missed 14 of 20 ways to write a file.** The static scan
   caught `open(..., "w")` but not `Path.open("w")`, `from os import system` or
   `os.O_WRONLY`. It's now tested against all 20.
@@ -105,6 +108,11 @@ uv run conduit --repo-root ~/code/my-project --deny 'secrets/' "Where is the ret
 uv sync --extra dev && uv run pytest
 ```
 
+The CLI streams each tool call as it happens, in the web demo's palette: blue
+for the calls, yellow for a refusal, which it shows as the boundary that fired.
+Piped output is plain text; `NO_COLOR` turns colour off and `FORCE_COLOR=1` turns
+it on outside a terminal.
+
 The server also runs on its own and works with any MCP client, such as the MCP Inspector:
 
 ```bash
@@ -140,13 +148,12 @@ it? Two question sets, the same model with and without tools, graded strictly.
 
 | Suite | With tools | Same model, no tools |
 |---|---|---|
-| Sample repo: 20 questions, 8 of them multi-step ([results](eval/results.md)) | **20/20**, 3.2 tool calls each | 5/20 |
-| This repository: 11 questions, ~350 symbols ([results](eval/results.conduit.md)) | **10/11**, 4.4 tool calls each | 3/11 |
+| Sample repo: 20 questions, 8 of them multi-step ([results](eval/results.md)) | **20/20**, 2.9 tool calls each | 5/20 |
+| This repository: 11 questions, ~350 symbols ([results](eval/results.conduit.md)) | **11/11**, 3.9 tool calls each | 3/11 |
 
 Model: `openai/gpt-oss-120b` on Groq. The no-tools passes are guesses that land
 (True/False questions, 429 as the rate-limit status); its misses are confident
-answers about other codebases, such as `REAL_IP_HEADER`. The one miss with tools
-searched the right folder but ran out of steps.
+answers about other codebases, such as `REAL_IP_HEADER`.
 
 How the eval is kept honest:
 
@@ -192,12 +199,14 @@ marker, which the page shows as "Declined: not about this repository".
 
 | Model | On-topic answered correctly | False refusals | Off-topic declined | Disguised, declined |
 |---|---|---|---|---|
-| `gpt-oss-120b` (Groq) ([results](eval/results.scope.md)) | 8/8 | 0 | 5/5 | 4/5 |
+| `gpt-oss-120b` (Groq) ([results](eval/results.scope.md)) | 8/8 | 0 | 5/5 | 5/5 |
 | `gemini-3.6-flash` ([results](eval/results.scope.gemini.json)) | 8/8 | 0 | 5/5 | 5/5 |
 
-Groq's one miss was the "write a LinkedIn scraper" request: the model refused it
-under its own safety policy instead of with the marker, so it was declined, but
-the page shows it as a plain answer. It's a prompt rule, so it's a strong default, not a
+Those are the latest runs. The model isn't deterministic, so I ran Groq's ten
+off-topic questions three times: 28 of 30 were declined. The two misses: once it
+wrote the requested poem, and once it refused the "write a LinkedIn scraper"
+request under its own safety policy instead of with the marker (declined, but
+shown as a plain answer). It's a prompt rule, so it's a strong default, not a
 guarantee; the server's guarantees don't depend on it.
 
 ## Model-agnostic
@@ -214,7 +223,10 @@ provider switch; no loop, server or client code changed.
 | `ollama` | `mistral` | fully local, no network, no key |
 
 Provider quirks stay inside their adapters: Gemini's thought signatures and
-Groq's tool-call IDs ride through the loop in an opaque field it never reads.
+Groq's tool-call IDs ride through the loop in an opaque field it never reads,
+and the Groq adapter undoes `gpt-oss`'s habits (a `repo_browser.` prefix on tool
+names, `line_start` for `start_line`) and retries a tool call Groq rejects for
+not matching its schema.
 
 ## Web demo
 

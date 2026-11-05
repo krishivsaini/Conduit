@@ -91,9 +91,10 @@ class GroqAdapter(LLMAdapter):
                 arguments = json.loads(call.function.arguments or "{}")
             except json.JSONDecodeError:
                 arguments = {}
+            name = _known_name(call.function.name, tool_schemas)
             return ToolCall(
-                name=_known_name(call.function.name, tool_schemas),
-                arguments=arguments if isinstance(arguments, dict) else {},
+                name=name,
+                arguments=_known_arguments(arguments if isinstance(arguments, dict) else {}, name, tool_schemas),
                 provider_meta={"tool_call_id": call.id},
             )
         return FinalAnswer(text=(message.content or "").strip())
@@ -109,6 +110,28 @@ def _known_name(name: str, tool_schemas: list[dict[str, Any]]) -> str:
         return name
     suffix = name.rsplit(".", 1)[1]
     return suffix if suffix in names else name
+
+
+def _known_arguments(
+    arguments: dict[str, Any], tool: str, tool_schemas: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Undo an argument name the model reordered: gpt-oss models write
+    ``line_start`` for a tool whose schema says ``start_line`` (15 of 133 calls
+    across the recorded eval runs). Renamed only when the schema has exactly one
+    argument made of the same words in another order, and the model didn't
+    also send that one. Anything else is passed through, and the server
+    refuses it with the right names."""
+    schema = next((s.get("input_schema") or {} for s in tool_schemas if s["name"] == tool), {})
+    valid = list(schema.get("properties", {}))
+    fixed = dict(arguments)
+    for arg in arguments:
+        if arg in valid:
+            continue
+        words = sorted(arg.lower().split("_"))
+        same = [v for v in valid if sorted(v.lower().split("_")) == words and v not in arguments]
+        if len(same) == 1:
+            fixed[same[0]] = fixed.pop(arg)
+    return fixed
 
 
 def _to_tools(tool_schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:

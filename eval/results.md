@@ -1,34 +1,34 @@
 # Conduit evaluation results
 
-- **Updated:** 2026-11-03 · **Provider / model:** groq / openai/gpt-oss-120b
+- **Updated:** 2026-11-05 · **Provider / model:** groq / openai/gpt-oss-120b
 - **Questions:** 20 (1–12 single-step, 13–20 multi-step) · **Server target:** `sample-repo/`
 - **With tools:** 20/20 (100%)
 - **Baseline (same model, no tools):** 5/20 (25%)
-- **Mean tool calls per answered question:** 3.2
+- **Mean tool calls per answered question:** 2.9
 
 Graded strictly: the reply's `ANSWER:` line must equal the expected value exactly, ignoring only formatting. ⏳ = not yet sent to the model (quota).
 
 | # | Expected | With tools | Calls | ✓ | Baseline | ✓ |
 |---|---|---|---|---|---|---|
-| 1 | `None` | None | 4 | ✅ | false | ❌ |
-| 2 | `src/auth.py` | src/auth.py | 3 | ✅ | src/auth/auth_service.py | ❌ |
-| 3 | `PaymentError` | PaymentError | 3 | ✅ | InvalidAmountException | ❌ |
+| 1 | `None` | None | 3 | ✅ | false | ❌ |
+| 2 | `src/auth.py` | src/auth.py | 2 | ✅ | src/auth/auth_service.py | ❌ |
+| 3 | `PaymentError` | PaymentError | 2 | ✅ | InvalidAmountException | ❌ |
 | 4 | `50` | 50 | 1 | ✅ | 1 | ❌ |
 | 5 | `2` | 2 | 1 | ✅ | 7 | ❌ |
-| 6 | `2` | 2 | 5 | ✅ | 4 | ❌ |
-| 7 | `src/utils.py` | src/utils.py | 4 | ✅ | src/utils/secret.py | ❌ |
-| 8 | `member` | member | 3 | ✅ | user | ❌ |
-| 9 | `$` | $ | 4 | ✅ | $ | ✅ |
+| 6 | `2` | 2 | 4 | ✅ | 4 | ❌ |
+| 7 | `src/utils.py` | src/utils.py | 5 | ✅ | src/utils/secret.py | ❌ |
+| 8 | `member` | member | 2 | ✅ | user | ❌ |
+| 9 | `$` | $ | 3 | ✅ | $ | ✅ |
 | 10 | `15` | 15 | 1 | ✅ | 27 | ❌ |
-| 11 | `redact` | redact | 3 | ✅ | signJwt | ❌ |
-| 12 | `False` | False | 3 | ✅ | False | ✅ |
-| 13 | `token::bob::*****r2` | token::bob::*****r2 | 5 | ✅ | abcd1234efgh5678ijkl9012mnop3456 | ❌ |
-| 14 | `amount below minimum of $0.50` | amount below minimum of $0.50 | 3 | ✅ | Amount must be at least 50 cents | ❌ |
-| 15 | `$10.50` | $10.50 | 4 | ✅ | 10.50 | ❌ |
+| 11 | `redact` | redact | 5 | ✅ | signJwt | ❌ |
+| 12 | `False` | False | 2 | ✅ | False | ✅ |
+| 13 | `token::bob::*****r2` | token::bob::*****r2 | 2 | ✅ | abcd1234efgh5678ijkl9012mnop3456 | ❌ |
+| 14 | `amount below minimum of $0.50` | amount below minimum of $0.50 | 4 | ✅ | Amount must be at least 50 cents | ❌ |
+| 15 | `$10.50` | $10.50 | 3 | ✅ | 10.50 | ❌ |
 | 16 | `False` | False | 3 | ✅ | False | ✅ |
 | 17 | `alice` | alice | 1 | ✅ | admin | ❌ |
 | 18 | `False` | False | 2 | ✅ | False | ✅ |
-| 19 | `3` | 3 | 6 | ✅ | 3 | ✅ |
+| 19 | `3` | 3 | 5 | ✅ | 3 | ✅ |
 | 20 | `5` | 5 | 6 | ✅ | 7 | ❌ |
 
 ## How to read these numbers

@@ -197,3 +197,37 @@ def test_a_visitor_gets_a_sentence_not_the_providers_400():
 
     message = _friendly_error(RuntimeError(REJECTED))
     assert "Try rephrasing" in message and "Error code" not in message and "minLength" not in message
+
+
+
+# --- Argument names the model reorders ------------------------------------------
+
+READ_FILE = {"name": "read_file", "input_schema": {"properties": {
+    "path": {}, "start_line": {}, "end_line": {}}}}
+
+
+@pytest.mark.parametrize("sent, expected", [
+    ({"path": "a.py", "line_start": 1, "line_end": 9}, {"path": "a.py", "start_line": 1, "end_line": 9}),
+    ({"path": "a.py", "start_line": 1}, {"path": "a.py", "start_line": 1}),            # already right
+    ({"path": "a.py", "max_lines": 9}, {"path": "a.py", "max_lines": 9}),              # not a reordering: left for the server
+    ({"path": "a.py", "line_start": 1, "start_line": 2}, {"path": "a.py", "line_start": 1, "start_line": 2}),  # ambiguous
+])
+async def test_a_reordered_argument_name_is_mapped_back(sent, expected):
+    import json as _json
+
+    adapter, _ = _adapter([_reply([_call("c1", "read_file", _json.dumps(sent))])])
+    decision = await adapter.decide([{"role": "user", "content": "q"}], [READ_FILE])
+    assert decision.arguments == expected
+
+
+async def test_the_mapped_call_is_one_the_server_accepts(sample_repo):
+    """End to end: line_start/line_end reach the server as start_line/end_line,
+    and come back as the asked-for range, not a refusal."""
+    adapter, _ = _adapter([
+        _reply([_call("c1", "read_file", '{"path": "src/auth.py", "line_start": 1, "line_end": 3}')]),
+        _reply(content="ANSWER: ok"),
+    ])
+    async with MCPCodebaseClient(conduit_server_params(sample_repo)) as client:
+        result = await run_turn(client, adapter, "q")
+    (step,) = result.steps
+    assert not step.is_error and '"end_line": 3' in step.result_text

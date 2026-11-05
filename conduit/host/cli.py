@@ -21,6 +21,7 @@ import argparse
 import asyncio
 import os
 import re
+import shutil
 import sys
 import time
 from collections.abc import Sequence
@@ -33,6 +34,7 @@ from .llm.fallback import FallbackAdapter
 from .llm.groq import rejected_tool_call
 from .llm.pacing import Paced, is_per_day_limit, is_rate_limit
 from .scope import apply_scope, declined
+from .theme import Style, clean, markdown, wrap
 from .loop import LoopResult, ToolInvocation, run_turn
 
 PROVIDERS = ("auto", "gemini", "groq", "ollama")
@@ -59,23 +61,7 @@ def _load_env() -> None:
         pass
 
 
-class _Style:
-    """ANSI styling on a terminal only, and never when NO_COLOR is set."""
-
-    def __init__(self, stream: TextIO) -> None:
-        self.on = stream.isatty() and "NO_COLOR" not in os.environ
-
-    def _wrap(self, code: str, text: str) -> str:
-        return f"\x1b[{code}m{text}\x1b[0m" if self.on else text
-
-    def dim(self, text: str) -> str:
-        return self._wrap("2", text)
-
-    def bold(self, text: str) -> str:
-        return self._wrap("1", text)
-
-    def warn(self, text: str) -> str:
-        return self._wrap("33", text)
+_Style = Style  # the palette lives in conduit/host/theme.py
 
 
 class _Spinner:
@@ -90,6 +76,7 @@ class _Spinner:
 
     def __init__(self) -> None:
         self.enabled = sys.stderr.isatty()
+        self._style = Style(sys.stderr)
         self._task: asyncio.Task[None] | None = None
         self._t0 = 0.0
 
@@ -97,7 +84,8 @@ class _Spinner:
         i = 0
         while True:
             elapsed = int(time.monotonic() - self._t0)
-            sys.stderr.write(f"\r{self.FRAMES[i % len(self.FRAMES)]} thinking… {elapsed}s")
+            frame = self._style.hazard(self.FRAMES[i % len(self.FRAMES)])
+            sys.stderr.write(f"\r  {frame} {self._style.faint(f'thinking… {elapsed}s')}")
             sys.stderr.flush()
             i += 1
             await asyncio.sleep(0.1)
@@ -124,8 +112,11 @@ class _Spinner:
         self.clear()
 
 
-def _fmt_args(args: dict[str, Any]) -> str:
-    return ", ".join(f"{k}={v!r}" for k, v in args.items())
+def _fmt_args(args: dict[str, Any], style: Style | None = None) -> str:
+    """name=value pairs: names quiet, values in signal blue (as on the page)."""
+    if style is None:
+        return ", ".join(f"{k}={v!r}" for k, v in args.items())
+    return style.faint(", ").join(f"{style.faint(k + '=')}{style.signal(repr(v))}" for k, v in args.items())
 
 
 def _boundary(detail: str) -> str | None:
@@ -135,31 +126,37 @@ def _boundary(detail: str) -> str | None:
     return None
 
 
-def _print_step(index: int, step: ToolInvocation, style: _Style) -> None:
-    call = f"  [{index}] {step.name}({_fmt_args(step.arguments)})"
+def _print_step(index: int, step: ToolInvocation, style: Style) -> None:
+    n = style.signal(f"{index:02d}", bold=True)
+    call = f"  {n}  {style.bold(step.name)}{style.faint('(')}{_fmt_args(step.arguments, style)}{style.faint(')')}"
     if not step.is_error:
-        print(f"{call} -> ok", flush=True)
+        print(f"{call}  {style.faint('returned')}", flush=True)
         return
     detail = _TOOL_ERROR_PREFIX.sub("", step.result_text.strip())
+    print(call, flush=True)
     if _SENT_BACK.search(detail):
         # Not a boundary: a wrong argument, answered with the right names.
-        print(f"{call} -> {style.dim('sent back: wrong argument')}", flush=True)
-        print(style.dim(f"      {detail[:200]}"), flush=True)
+        print(f"      {style.faint('↺ sent back: wrong argument')}", flush=True)
+        print(f"        {style.faint(detail[:200])}", flush=True)
         return
     boundary = _boundary(detail)
     status = f"refused by the {boundary}" if boundary else "refused"
-    print(f"{call} -> {style.warn(status)}", flush=True)
-    print(style.dim(f"      {detail[:200]}"), flush=True)
+    print(f"      {style.hazard('▌ ' + status, bold=True)}", flush=True)
+    print(f"      {style.hazard('▌')} {style.faint(detail[:200])}", flush=True)
 
 
 def _print_answer(result: LoopResult, style: _Style, scoped: bool = False) -> None:
     reason = declined(result.answer) if scoped else None
     if reason is not None:
-        print(style.warn(f"\nDeclined: not about this repository ({reason})."), flush=True)
+        print(f"\n  {style.hazard('▌ Declined: not about this repository', bold=True)}", flush=True)
+        print(f"  {style.hazard('▌')} {style.faint(reason)}\n", flush=True)
         return
-    print("\n" + result.answer.strip())
+    print(f"\n  {style.hazard('ANSWER', bold=True)}", flush=True)
     if result.hit_step_limit:
-        print(style.dim("\n(used the full tool budget, then answered from the evidence gathered)"))
+        print(style.faint("  (used the full tool budget, then answered from the evidence gathered)"))
+    text = clean(result.answer.strip())
+    width = shutil.get_terminal_size((100, 24)).columns if sys.stdout.isatty() else 10_000
+    print(markdown(wrap(text, min(width, 100)), style))
     print(flush=True)
 
 
@@ -246,20 +243,22 @@ async def _run(
     style = _Style(sys.stdout)
     async with MCPCodebaseClient(conduit_server_params(str(repo_root), deny=deny)) as client:
         tools = await client.discover_tools()
-        names = ", ".join(t.name for t in tools)
         label = provider
         if isinstance(adapter, FallbackAdapter):
             label = "auto (gemini, then groq if gemini is rate limited)"
-        print(style.dim(f"provider: {label} · tools discovered from the server: {names}"), flush=True)
+        print(f"{style.hazard('▌', bold=True)}{style.bold('CONDUIT')}  {style.faint(label)}", flush=True)
+        print(f"  {style.faint('serving')}  {style.signal(_shown_path(repo_root))}", flush=True)
+        tool_list = style.faint(" · ").join(style.signal(t.name) for t in tools)
+        print(f"  {style.faint('tools')}    {tool_list}  {style.faint('discovered from the server')}", flush=True)
 
         if question is not None:
             print(flush=True)
             return 0 if await _ask(client, adapter, provider, question, style, scoped) else 1
 
-        print(style.dim("Ask a question about the repo. Ctrl-D to exit.") + "\n")
+        print("\n" + style.faint("  Ask a question about the repo. Ctrl-D to exit.") + "\n")
         while True:
             try:
-                line = input(style.bold("conduit> ")).strip()
+                line = input(style.signal("conduit› ", bold=True)).strip()
             except EOFError:
                 print()
                 return 0
@@ -267,11 +266,22 @@ async def _run(
                 await _ask(client, adapter, provider, line, style, scoped)
 
 
+def _shown_path(path: Path) -> str:
+    """The served repo as a reader would name it: relative when it's under here."""
+    resolved = Path(path).expanduser().resolve()
+    try:
+        rel = resolved.relative_to(Path.cwd())
+        return "./" if str(rel) == "." else f"{rel}/"
+    except ValueError:
+        return str(resolved).replace(str(Path.home()), "~", 1) + "/"
+
+
 def _paced(adapter: LLMAdapter, name: str) -> LLMAdapter:
     """Wait out per-minute limits: a multi-step question can trip one partway
     through, and failing a question that's half done helps no one."""
+    err = Style(sys.stderr)
     return Paced(adapter, on_wait=lambda s: print(
-        f"\r(rate limited by {name}: waiting {s:.0f}s)", file=sys.stderr, flush=True))
+        "\r  " + err.faint(f"(rate limited by {name}: waiting {s:.0f}s)"), file=sys.stderr, flush=True))
 
 
 def _with_rate_limit_handling(adapter: LLMAdapter, provider: str) -> LLMAdapter:
@@ -280,7 +290,8 @@ def _with_rate_limit_handling(adapter: LLMAdapter, provider: str) -> LLMAdapter:
     # Gemini's per-minute limit is waited out, so it stays free; only a spent
     # daily quota moves the question to Groq.
     def notice(reason: str) -> None:
-        print(f"\r(Gemini {reason}: continuing on Groq, {adapter.fallback.model})",
+        err = Style(sys.stderr)
+        print("\r  " + err.hazard(f"(Gemini {reason}: continuing on Groq, {adapter.fallback.model})"),
               file=sys.stderr, flush=True)
 
     return FallbackAdapter(_paced(adapter.primary, "gemini"), _paced(adapter.fallback, "groq"),

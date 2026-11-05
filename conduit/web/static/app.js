@@ -252,6 +252,8 @@ function barrier(text) {
  * prose doesn't already say it. (The recording itself stays byte-exact; CI
  * replays it.) */
 function displayAnswer(text) {
+  // gpt-oss cites sources as 【source:file†L1-L9】, which points nowhere here.
+  text = text.replace(/\s*【[^】]*】/g, "");
   const lines = text.trim().split("\n");
   const last = lines.length - 1 - [...lines].reverse().findIndex((l) => /^[\s>*_]*answer[*_]*\s*:/i.test(l));
   if (last >= lines.length) return text.trim();

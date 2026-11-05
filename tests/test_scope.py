@@ -44,7 +44,7 @@ def test_the_rule_reaches_both_providers_behind_auto():
 
 
 
-@pytest.mark.parametrize("scoped, shows", [(True, "Declined: not about this repository (recipes)"),
+@pytest.mark.parametrize("scoped, shows", [(True, "Declined: not about this repository\n  ▌ recipes"),
                                           (False, "OFF_TOPIC: recipes")])
 def test_the_cli_shows_a_decline_only_when_scoped(monkeypatch, capsys, sample_repo, scoped, shows):
     import sys
