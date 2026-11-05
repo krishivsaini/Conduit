@@ -231,3 +231,13 @@ def test_the_gemini_cli_waits_out_a_per_minute_limit(monkeypatch, capsys, sample
     captured = capsys.readouterr()
     assert exit_info.value.code == 0
     assert "waiting 3s" in captured.err and "gemini" in captured.err and captured.out.rstrip().endswith("answered")
+
+
+
+def test_a_wrong_argument_is_shown_as_sent_back_not_refused(capsys):
+    step = ToolInvocation(name="read_file", arguments={"path": "a.py", "line_start": 1},
+                          result_text="read_file does not take 'line_start' (did you mean 'start_line'?).",
+                          is_error=True)
+    cli._print_step(1, step, cli._Style(io.StringIO()))
+    out = capsys.readouterr().out
+    assert "sent back: wrong argument" in out and "refused" not in out

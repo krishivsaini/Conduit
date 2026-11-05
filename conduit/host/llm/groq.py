@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 
 from groq import AsyncGroq
@@ -22,6 +23,25 @@ from groq import AsyncGroq
 from .adapter import SYSTEM_PROMPT, Decision, FinalAnswer, LLMAdapter, Message, ToolCall
 
 DEFAULT_MODEL = "openai/gpt-oss-120b"
+
+# Groq validates every tool call against its schema and rejects the whole
+# response (HTTP 400, code tool_use_failed) when one doesn't match, e.g. a
+# search_code call with an empty query. Seen in a real demo run.
+TOOL_CALL_RETRIES = 2
+
+_SCHEMA_ERROR = re.compile(r"parameters for tool (\w+) did not match schema: errors: \[(.*?)\]", re.S)
+
+
+def rejected_tool_call(error: str) -> str | None:
+    """What was wrong, if ``error`` is Groq refusing an invalid tool call; else None."""
+    lowered = error.lower()
+    if "tool call validation failed" not in lowered and "tool_use_failed" not in lowered:
+        return None
+    match = _SCHEMA_ERROR.search(error)
+    if match:
+        tool, details = match.groups()
+        return f"its arguments for {tool} didn't match the schema ({details.strip('` ').replace('`', '')})"
+    return "it didn't match the tool's schema"
 
 
 class GroqAdapter(LLMAdapter):
@@ -45,11 +65,25 @@ class GroqAdapter(LLMAdapter):
         kwargs: dict[str, Any] = {}
         if tool_schemas:  # no tools => the model must answer in text
             kwargs["tools"] = _to_tools(tool_schemas)
-        response = await self._client.chat.completions.create(
-            model=self.model,
-            messages=_to_messages(messages, self.system_prompt),
-            **kwargs,
-        )
+        api_messages = _to_messages(messages, self.system_prompt)
+        for attempt in range(TOOL_CALL_RETRIES + 1):
+            try:
+                response = await self._client.chat.completions.create(
+                    model=self.model, messages=api_messages, **kwargs
+                )
+                break
+            except Exception as exc:  # noqa: BLE001 — only a rejected tool call is retried
+                problem = rejected_tool_call(str(exc))
+                if problem is None or attempt == TOOL_CALL_RETRIES:
+                    raise
+                # Groq checked the model's tool call against the schema and refused
+                # the whole response. Say what was wrong, as the server would have,
+                # and let the model try again. Not added to the loop's history.
+                api_messages = api_messages + [{
+                    "role": "user",
+                    "content": f"Your last tool call was rejected before it ran: {problem}. "
+                               "Call the tool again with arguments that match its schema, or answer.",
+                }]
         message = response.choices[0].message
         if message.tool_calls:
             call = message.tool_calls[0]  # the loop runs one tool per step

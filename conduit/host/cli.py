@@ -30,6 +30,7 @@ from typing import Any, TextIO
 from .client import MCPCodebaseClient, conduit_server_params
 from .llm.adapter import LLMAdapter, get_adapter
 from .llm.fallback import FallbackAdapter
+from .llm.groq import rejected_tool_call
 from .llm.pacing import Paced, is_per_day_limit, is_rate_limit
 from .scope import apply_scope, declined
 from .loop import LoopResult, ToolInvocation, run_turn
@@ -44,6 +45,8 @@ _BOUNDARIES = (
     (re.compile(r"is not served", re.I), "repo's own exclusions (.gitignore)"),
 )
 _TOOL_ERROR_PREFIX = re.compile(r"^Error executing tool \w+:\s*")
+# The server's answer to an argument a tool doesn't take, or a bad value.
+_SENT_BACK = re.compile(r"does not take|should be|is required", re.I)
 
 
 def _load_env() -> None:
@@ -138,6 +141,11 @@ def _print_step(index: int, step: ToolInvocation, style: _Style) -> None:
         print(f"{call} -> ok", flush=True)
         return
     detail = _TOOL_ERROR_PREFIX.sub("", step.result_text.strip())
+    if _SENT_BACK.search(detail):
+        # Not a boundary: a wrong argument, answered with the right names.
+        print(f"{call} -> {style.dim('sent back: wrong argument')}", flush=True)
+        print(style.dim(f"      {detail[:200]}"), flush=True)
+        return
     boundary = _boundary(detail)
     status = f"refused by the {boundary}" if boundary else "refused"
     print(f"{call} -> {style.warn(status)}", flush=True)
@@ -182,6 +190,11 @@ def _explain(provider: str, exc: Exception) -> str:
         return (
             "the Gemini free tier is rate limited (5 requests a minute, plus a daily "
             "cap). Wait a minute and retry, or use --provider groq or --provider ollama."
+        )
+    if rejected_tool_call(text):
+        return (
+            "the model kept making tool calls that didn't fit the tools' arguments "
+            f"({rejected_tool_call(text)}). Try rephrasing the question."
         )
     if any(t in lowered for t in ("503", "unavailable", "overloaded", "high demand")):
         return (

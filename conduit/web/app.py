@@ -40,6 +40,7 @@ from starlette.staticfiles import StaticFiles
 
 from conduit.host.client import MCPCodebaseClient, conduit_server_params
 from conduit.host.llm.adapter import get_adapter
+from conduit.host.llm.groq import rejected_tool_call
 from conduit.host.scope import apply_scope, declined
 from conduit.host.loop import run_turn
 
@@ -235,6 +236,11 @@ def _friendly_error(exc: Exception) -> str:
         )
     if "api key" in lowered or "api_key" in lowered or "credential" in lowered:
         return "Live questions are not configured on this deployment (no model API key)."
+    if rejected_tool_call(text):
+        return (
+            "The model kept making tool calls that didn't fit the tools' arguments, so "
+            "this question was stopped. Try rephrasing it, or pick a recorded run."
+        )
     return f"The model provider returned an error: {text[:200]}"
 
 

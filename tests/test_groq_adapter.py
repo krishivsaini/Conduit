@@ -130,3 +130,70 @@ async def test_an_invented_namespace_is_mapped_back_to_the_real_tool(called, exp
     schemas = [{"name": n, "input_schema": {}} for n in ("read_file", "list_symbols")]
     decision = await adapter.decide([{"role": "user", "content": "q"}], schemas)
     assert decision.name == expected
+
+
+
+# --- Groq refusing an invalid tool call -----------------------------------------
+# Seen in a real demo run: gpt-oss called search_code(query=""), Groq checked it
+# against the schema (minLength 1) and refused the whole response with a 400.
+
+REJECTED = ("Error code: 400 - {'error': {'message': 'Tool call validation failed: tool call validation "
+            "failed: parameters for tool search_code did not match schema: errors: [`/query`: minLength: "
+            "got 0, want 1]', 'type': 'invalid_request_error', 'code': 'tool_use_failed'}}")
+
+
+class Rejecting(FakeCompletions):
+    def __init__(self, failures, replies):
+        super().__init__(replies)
+        self.failures = failures
+
+    async def create(self, **request):
+        self.requests.append(request)
+        if self.failures:
+            self.failures -= 1
+            raise RuntimeError(REJECTED)
+        return self.replies.pop(0)
+
+
+def _rejecting_adapter(failures, replies):
+    adapter = GroqAdapter(api_key="dummy-not-used")
+    fake = Rejecting(failures, replies)
+    adapter._client = SimpleNamespace(chat=SimpleNamespace(completions=fake))
+    return adapter, fake
+
+
+async def test_a_rejected_tool_call_is_explained_to_the_model_and_retried():
+    adapter, fake = _rejecting_adapter(1, [_reply([_call("c1", "search_code", '{"query": "deny"}')])])
+    decision = await adapter.decide([{"role": "user", "content": "q"}], [{"name": "search_code", "input_schema": {}}])
+    assert decision == ToolCall("search_code", {"query": "deny"}, {"tool_call_id": "c1"})
+    retry = fake.requests[1]["messages"][-1]
+    assert retry["role"] == "user" and "search_code" in retry["content"] and "minLength" in retry["content"]
+    assert len(fake.requests[0]["messages"]) == 2  # the first attempt wasn't altered
+
+
+async def test_it_gives_up_after_two_retries():
+    adapter, fake = _rejecting_adapter(5, [])
+    with pytest.raises(RuntimeError, match="tool_use_failed"):
+        await adapter.decide([{"role": "user", "content": "q"}], [{"name": "search_code", "input_schema": {}}])
+    assert len(fake.requests) == 3
+
+
+async def test_other_errors_are_not_retried():
+    class Down(FakeCompletions):
+        async def create(self, **request):
+            self.requests.append(request)
+            raise RuntimeError("503 Service Unavailable")
+
+    adapter = GroqAdapter(api_key="dummy-not-used")
+    fake = Down([])
+    adapter._client = SimpleNamespace(chat=SimpleNamespace(completions=fake))
+    with pytest.raises(RuntimeError, match="503"):
+        await adapter.decide([{"role": "user", "content": "q"}], [])
+    assert len(fake.requests) == 1
+
+
+def test_a_visitor_gets_a_sentence_not_the_providers_400():
+    from conduit.web.app import _friendly_error
+
+    message = _friendly_error(RuntimeError(REJECTED))
+    assert "Try rephrasing" in message and "Error code" not in message and "minLength" not in message
