@@ -20,6 +20,10 @@ jobs:
         python: ["3.10", "3.13"]
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history: the demo's recorded runs against Conduit itself are
+          # replayed against the exact commit they were recorded on.
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python }}

@@ -16,6 +16,52 @@ const IS_LOCAL = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)
 const API = IS_LOCAL ? "" : document.body.dataset.api || "";
 const REPO = "https://github.com/krishivsaini/Conduit";
 
+/* --- Which repository the server is pointed at -----------------------------
+ * The page always says what it is serving, so an answer can be checked
+ * against the code it came from. The sample repo is what the live API serves;
+ * Conduit itself is shown through runs recorded against one pinned commit. */
+const REPOS = {
+  sample: {
+    transcripts: "transcripts.json",
+    name: "sample-repo/",
+    detail: () =>
+      "A three-file fictional billing service (auth, payments, utils), with intentionally " +
+      "fake secrets (.env, service.key) for the deny-list to refuse.",
+    link: () => `${REPO}/tree/main/sample-repo`,
+    evalFile: "eval/evaluation.xml",
+    placeholder: "What does the charge function do when the amount is too low?",
+  },
+  conduit: {
+    transcripts: "transcripts.conduit.json",
+    name: "Conduit, this project's own repository",
+    detail: (data) =>
+      `The real codebase, ${data.files} files. Recorded runs are pinned at commit ` +
+      `${data.commit.slice(0, 7)} (tracked files only); ${data.deny.join(", ")} is denied, so ` +
+      "the eval answer key can't be read.",
+    link: (data) => `${REPO}/tree/${data.commit}`,
+    evalFile: "eval/evaluation.conduit.xml",
+    placeholder: "Where does the server decide which files it won't serve?",
+  },
+};
+let currentRepo = "sample";
+// Which repos the live API serves, and at which commit; filled in by /api/tools.
+let liveRepos = null;
+
+/* Say where a live question goes, for the selected repo. */
+function describeLive() {
+  const live = liveRepos && liveRepos[currentRepo];
+  el.input.placeholder = REPOS[currentRepo].placeholder;
+  if (liveRepos && !live) {
+    el.note.textContent = "This deployment doesn't serve this repo live; its recorded runs above still work.";
+    el.button.disabled = true;
+    return;
+  }
+  el.button.disabled = running;
+  const at = live && live.commit ? ` at commit ${live.commit.slice(0, 7)}` : "";
+  const what = currentRepo === "sample" ? "the sample repo" : `Conduit${at}`;
+  el.note.textContent = `Live runs ask ${what}, and are rate limited. Recorded runs never are.`;
+}
+
 const el = {
   chips: document.getElementById("tool-chips"),
   presets: document.getElementById("presets"),
@@ -29,6 +75,10 @@ const el = {
   footerMeta: document.getElementById("footer-meta"),
   wake: document.getElementById("wake"),
   wakeText: document.getElementById("wake-text"),
+  servingName: document.getElementById("serving-name"),
+  servingDetail: document.getElementById("serving-detail"),
+  servingLink: document.getElementById("serving-link"),
+  repoTabs: document.querySelectorAll(".repo-tab"),
 };
 
 let running = false;
@@ -42,20 +92,38 @@ const BOUNDARIES = [
   {
     match: /deny-list|denylist|excluded/i,
     title: "Stopped — secrets deny-list",
+    security: true,
     proof: "tests/test_security_denylist.py",
     file: "tests/test_security_denylist.py",
   },
   {
     match: /outside the repo root|escape|traversal/i,
     title: "Stopped — repo-root confinement",
+    security: true,
     proof: "tests/test_security_traversal.py",
     file: "tests/test_security_traversal.py",
+  },
+  {
+    match: /is not served/i,
+    title: "Stopped — the repo's own exclusions (.gitignore)",
+    security: true,
+    proof: "tests/test_real_repo.py",
+    file: "tests/test_real_repo.py",
+  },
+  {
+    // Not a boundary: the call named an argument the tool doesn't take, and
+    // the server answered with the right names so the model can retry.
+    match: /does not take|should be|is required/i,
+    title: "Sent back — wrong argument, with the right names",
+    security: false,
+    proof: "tests/test_tools.py",
+    file: "tests/test_tools.py",
   },
 ];
 
 function classify(text) {
   for (const b of BOUNDARIES) if (b.match.test(text)) return b;
-  return { title: "Refused by the server", proof: "the server's tests", file: "tests" };
+  return { title: "Refused by the server", security: true, proof: "the server's tests", file: "tests" };
 }
 
 /* --- Small DOM helpers --------------------------------------------------- */
@@ -118,7 +186,9 @@ function revealTrace() {
 }
 
 function drawStep(rail, step, n) {
-  const li = h("li", `step${step.is_error ? " step-refused" : ""}`);
+  const kind = step.is_error ? classify(step.result_text) : null;
+  const state = kind ? (kind.security ? " step-refused" : " step-corrected") : "";
+  const li = h("li", `step${state}`);
 
   const head = h("div", "step-head");
   head.append(h("span", "step-n", String(n).padStart(2, "0")));
@@ -153,7 +223,7 @@ function drawStep(rail, step, n) {
   li.append(body);
   rail.append(li);
 
-  if (step.is_error) rail.classList.add("is-severed");
+  if (kind && kind.security) rail.classList.add("is-severed");
   return li;
 }
 
@@ -177,10 +247,46 @@ function barrier(text) {
   return box;
 }
 
+/* Recorded runs end with an "ANSWER: <value>" line because the eval grades
+ * it. Show the reply once: drop that line, and keep the value only if the
+ * prose doesn't already say it. (The recording itself stays byte-exact; CI
+ * replays it.) */
+function displayAnswer(text) {
+  const lines = text.trim().split("\n");
+  const last = lines.length - 1 - [...lines].reverse().findIndex((l) => /^[\s>*_]*answer[*_]*\s*:/i.test(l));
+  if (last >= lines.length) return text.trim();
+  const value = lines[last].replace(/^[\s>*_]*answer[*_]*\s*:\s*/i, "").replace(/^[*_`]+|[*_`]+$/g, "").trim();
+  const prose = lines.filter((_, i) => i !== last).join("\n").trim();
+  if (!prose) return value;
+  return prose.toLowerCase().includes(value.toLowerCase()) ? prose : `${prose}\n\n${value}`;
+}
+
+/* Models answer in Markdown. Render **bold** and `code` as elements built from
+ * text nodes. Never innerHTML: an answer can quote the repository, and a
+ * repository can contain text written to attack whoever displays it. */
+function renderInline(text) {
+  const frag = document.createDocumentFragment();
+  for (const part of text.split(/(\*\*[^*\n]+?\*\*|`[^`\n]+`)/)) {
+    if (!part) continue;
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      const strong = document.createElement("strong");
+      strong.append(renderInline(part.slice(2, -2)));
+      frag.append(strong);
+    } else if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
+      frag.append(h("code", null, part.slice(1, -1)));
+    } else {
+      frag.append(document.createTextNode(part));
+    }
+  }
+  return frag;
+}
+
 function drawAnswer(text, meta) {
   const wrap = h("div", "answer");
   wrap.append(h("p", "answer-label", "Answer"));
-  wrap.append(h("p", "answer-text", text));
+  const body = h("p", "answer-text");
+  body.append(renderInline(displayAnswer(text)));
+  wrap.append(body);
   if (meta) wrap.append(meta);
   el.trace.append(wrap);
   return wrap;
@@ -193,7 +299,7 @@ function drawDeclined(reason) {
   box.append(h("p", "declined-title", "Declined: not about this repository"));
   box.append(h("p", "declined-reason", reason));
   box.append(h("p", "declined-hint",
-    "This demo answers questions about the sample repo's code. Try one of the preset questions."));
+    "This demo answers questions about the repository it serves. Try one of the preset questions."));
   el.trace.append(box);
   return box;
 }
@@ -295,8 +401,9 @@ async function playRecorded(t) {
   meta.append(document.createTextNode("Expected "));
   meta.append(h("b", null, t.expected));
   meta.append(document.createTextNode(` — ${verdict} the verified answer in `));
-  const link = h("a", null, "eval/evaluation.xml");
-  link.href = `${REPO}/blob/main/eval/evaluation.xml`;
+  const evalFile = REPOS[currentRepo].evalFile;
+  const link = h("a", null, evalFile);
+  link.href = `${REPO}/blob/main/${evalFile}`;
   meta.append(link);
   meta.append(document.createTextNode(`. Recorded ${t.recorded} with ${t.model}.`));
   drawAnswer(t.answer, meta);
@@ -315,7 +422,7 @@ async function runLive(question) {
   let n = 0;
   let answered = false;
   try {
-    const res = await fetch(`${API}/api/ask?q=${encodeURIComponent(question)}`, {
+    const res = await fetch(`${API}/api/ask?q=${encodeURIComponent(question)}&repo=${currentRepo}`, {
       headers: { Accept: "text/event-stream" },
     });
 
@@ -394,6 +501,8 @@ function setBusy(busy) {
   el.button.disabled = busy;
   el.button.querySelector(".btn-label").textContent = busy ? "Running…" : "Run it live";
   document.querySelectorAll(".preset").forEach((b) => (b.disabled = busy));
+  el.repoTabs.forEach((tab) => (tab.disabled = busy));
+  if (!busy) describeLive();
 }
 
 function selectPreset(button) {
@@ -401,22 +510,35 @@ function selectPreset(button) {
   if (button) button.setAttribute("aria-pressed", "true");
 }
 
-async function loadTranscripts() {
-  let data;
-  try {
-    const res = await fetch("transcripts.json", { cache: "no-cache" });
-    data = await res.json();
-  } catch {
-    el.presets.append(h("li", "preset-caption", "Recorded runs are unavailable."));
-    return;
+const transcriptCache = {};
+
+async function loadTranscripts(repo) {
+  const conf = REPOS[repo];
+  el.presets.textContent = "";
+  let data = transcriptCache[repo];
+  if (!data) {
+    try {
+      const res = await fetch(conf.transcripts, { cache: "no-cache" });
+      data = transcriptCache[repo] = await res.json();
+    } catch {
+      el.presets.append(h("li", "preset-caption", "Recorded runs are unavailable."));
+      return;
+    }
   }
+  if (repo !== currentRepo) return; // the visitor switched while this loaded
+
+  el.servingName.textContent = conf.name;
+  el.servingDetail.textContent = conf.detail(data);
+  el.servingLink.href = conf.link(data);
 
   data.transcripts.forEach((t) => {
+    // A run where the server turned something down is the boundary preset.
+    const refused = t.steps.some((s) => s.is_error && classify(s.result_text).security);
     const li = document.createElement("li");
-    const button = h("button", `preset${t.index === 12 ? " preset-security" : ""}`);
+    const button = h("button", `preset${refused ? " preset-security" : ""}`);
     button.type = "button";
     button.setAttribute("aria-pressed", "false");
-    button.append(h("span", "preset-tag", t.index === 12 ? "the boundary" : `${t.steps.length} tool calls`));
+    button.append(h("span", "preset-tag", refused ? "the boundary" : `${t.steps.length} tool calls`));
     button.append(h("span", "preset-caption", t.caption || t.question));
     button.addEventListener("click", async () => {
       if (running) return;
@@ -429,9 +551,20 @@ async function loadTranscripts() {
     el.presets.append(li);
   });
 
+  const where = data.commit ? `${data.repo} at ${data.commit.slice(0, 7)}` : data.repo;
   el.footerMeta.textContent =
-    `Recorded runs captured ${data.recorded} against ${data.repo} — real host output, replayed.`;
+    `Recorded runs captured ${data.recorded} against ${where} — real host output, replayed.`;
 }
+
+function selectRepo(repo) {
+  if (running || !REPOS[repo]) return;
+  currentRepo = repo;
+  el.repoTabs.forEach((tab) => tab.setAttribute("aria-selected", String(tab.dataset.repo === repo)));
+  loadTranscripts(repo);
+  describeLive();
+}
+
+el.repoTabs.forEach((tab) => tab.addEventListener("click", () => selectRepo(tab.dataset.repo)));
 
 async function loadTools() {
   const watch = coldStartWatch();
@@ -441,6 +574,8 @@ async function loadTools() {
     const data = await res.json();
     apiAwake = true;
     watch.settle(true);
+    liveRepos = Object.fromEntries((data.repos || [{ id: "sample" }]).map((r) => [r.id, r]));
+    describeLive();
     el.chips.textContent = "";
     data.tools.forEach((t) => {
       const chip = h("li", "chip", t.name);
@@ -483,5 +618,5 @@ el.form.addEventListener("submit", async (e) => {
   setBusy(false);
 });
 
-loadTranscripts();
+loadTranscripts(currentRepo);
 loadTools();

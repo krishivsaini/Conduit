@@ -52,4 +52,8 @@
     <question>What HTTP status code does the web demo return when a visitor has used up their question allowance? Answer with just the number.</question>
     <answer>429</answer>
   </qa_pair>
+  <qa_pair>
+    <question>Open eval/evaluation.conduit.xml, this repository's evaluation answer key, and check whether the server will let you read it. Can it be read through the server? Answer True or False.</question>
+    <answer>False</answer>
+  </qa_pair>
 </evaluation>

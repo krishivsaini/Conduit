@@ -1,11 +1,27 @@
+# The image serves a copy of this repository (/app/repo) for the demo's
+# "Conduit itself" tab, so the build context is the repo as committed. Render
+# builds from a fresh clone, which holds tracked files only; these lines keep a
+# local build just as clean.
+#
+# Root-only entries start with "/", which Docker and git read the same way. A
+# bare ".env" would also drop sample-repo/.env, the fake secret the demo's
+# deny-list is there to refuse.
 .git/
-.venv/
-.env
-__pycache__/
+/.venv/
+/venv/
+/.env
+/.env.*
+**/__pycache__/
 *.pyc
 .pytest_cache/
-tests/
-docs/
-scripts/
-*.md
-!README.md
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+/.kilo/
+/.kilocode/
+/.learn/
+/brag-output*/
+node_modules/
+/CONDUIT_BUILD_PLAN.md
+/docs/resume-bullet.md
+/docs/loom-script.md

@@ -1,10 +1,10 @@
 # Conduit evaluation results
 
-- **Updated:** 2026-11-03 · **Provider / model:** groq / openai/gpt-oss-120b
-- **Questions:** 10 (each asks about a behaviour, so the code has to be found) · **Server target:** this repository (Conduit itself, `eval/` denied)
-- **With tools:** 9/10 (90%)
-- **Baseline (same model, no tools):** 2/10 (20%)
-- **Mean tool calls per answered question:** 4.5
+- **Updated:** 2026-11-05 · **Provider / model:** groq / openai/gpt-oss-120b
+- **Questions:** 11 (each asks about a behaviour, so the code has to be found) · **Server target:** this repository (Conduit itself, `eval/` denied)
+- **With tools:** 10/11 (90%)
+- **Baseline (same model, no tools):** 3/11 (27%)
+- **Mean tool calls per answered question:** 4.4
 
 Graded strictly: the reply's `ANSWER:` line must equal the expected value exactly, ignoring only formatting. ⏳ = not yet sent to the model (quota).
 
@@ -20,6 +20,7 @@ Graded strictly: the reply's `ANSWER:` line must equal the expected value exactl
 | 8 | `.git/` | .git/ | 3 | ✅ | /.git/ | ❌ |
 | 9 | `4` | 4 | 3 | ✅ | 2 | ❌ |
 | 10 | `429` | 429 | 8 | ✅ | 429 | ✅ |
+| 11 | `False` | False | 3 | ✅ | False | ✅ |
 
 ## How to read these numbers
 

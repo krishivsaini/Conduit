@@ -22,7 +22,7 @@ from conduit.host.client import MCPCodebaseClient, conduit_server_params
 from conduit.host.llm.adapter import FinalAnswer, ToolCall
 from conduit.host.llm.stub import StubAdapter
 from conduit.host.loop import run_turn
-from conduit.web.app import MAX_QUESTION_CHARS, DemoHost, create_app
+from conduit.web.app import MAX_QUESTION_CHARS, STATIC_DIR, DemoHost, Target, create_app
 from conduit.web.limits import RateLimiter
 
 
@@ -378,3 +378,105 @@ def test_the_page_shows_a_declined_question_as_declined():
     js = (Path(__file__).resolve().parents[1] / "conduit" / "web" / "static" / "app.js").read_text()
     assert "payload.declined" in js and "function drawDeclined" in js
     assert "Declined: not about this repository" in js
+
+
+# --- Saying which repository is served -------------------------------------------
+
+
+def test_the_page_says_which_repository_the_server_is_pointed_at():
+    html = (STATIC_DIR / "index.html").read_text()
+    js = (STATIC_DIR / "app.js").read_text()
+    assert "The MCP server is pointed at" in html and 'id="serving-name"' in html
+    assert 'data-repo="sample"' in html and 'data-repo="conduit"' in html
+    # Each tab loads its own recordings and links to the exact code they ran on.
+    assert '"transcripts.json"' in js and '"transcripts.conduit.json"' in js
+    assert "${REPO}/tree/${data.commit}" in js
+    # The live box says which repo a question goes to, and at which commit.
+    assert "function describeLive" in js and "Live runs ask ${what}" in js
+    assert "Live runs ask the selected repo" in html
+
+
+def test_the_conduit_recordings_are_served_and_well_formed(sample_repo):
+    client = TestClient(create_app(host=DemoHost(sample_repo, provider="stub", adapter=StubAdapter([]))))
+    data = client.get("/transcripts.conduit.json").json()
+    assert re.fullmatch(r"[0-9a-f]{40}", data["commit"]) and data["deny"] == ["eval/"]
+    assert data["files"] > 50
+    for t in data["transcripts"]:
+        assert t["correct"] and t["caption"] and t["model"] and t["steps"]
+
+
+def test_a_wrong_argument_is_not_drawn_as_a_security_boundary():
+    js = (STATIC_DIR / "app.js").read_text()
+    assert "Sent back — wrong argument" in js and "security: false" in js
+    assert "kind.security" in js  # only security refusals cut the rail
+
+
+# --- Live questions on Conduit itself --------------------------------------------
+
+
+def _two_repo_client(sample_repo, tmp_path, script):
+    own = tmp_path / "conduit"
+    (own / "eval").mkdir(parents=True)
+    (own / "README.md").write_text("# Conduit\nAn MCP server.\n")
+    (own / "eval" / "evaluation.conduit.xml").write_text("<answer>the key</answer>\n")
+    targets = {"sample": Target("sample", sample_repo),
+               "conduit": Target("conduit", own, ("eval/",), "a" * 40)}
+    host = DemoHost(sample_repo, provider="stub", adapter=StubAdapter(script), targets=targets)
+    return TestClient(create_app(host=host))
+
+
+def test_a_live_question_can_ask_conduit_and_eval_stays_denied(sample_repo, tmp_path):
+    script = [ToolCall("read_file", {"path": "README.md"}),
+              ToolCall("read_file", {"path": "eval/evaluation.conduit.xml"}),
+              FinalAnswer("It's an MCP server; the answer key is refused.")]
+    client = _two_repo_client(sample_repo, tmp_path, script)
+    events = _events(client.get("/api/ask", params={"q": "what is this?", "repo": "conduit"}))
+    steps = [p for e, p in events if e == "step"]
+    assert "An MCP server" in steps[0]["result_text"]  # it served Conduit, not the sample
+    assert steps[1]["is_error"] and "deny-list" in steps[1]["result_text"]
+    assert "the key" not in json.dumps(events)
+
+
+def test_a_repo_this_deployment_doesnt_serve_is_refused_before_the_limiter(sample_repo):
+    host = DemoHost(sample_repo, provider="stub", adapter=StubAdapter([]),
+                    targets={"sample": Target("sample", sample_repo)})
+    app = create_app(host=host)
+    app.state.limiter = RateLimiter(per_ip=1, per_ip_window=60, global_daily=100)
+    client = TestClient(app)
+    for repo in ("conduit", "../../etc", "nope"):
+        r = client.get("/api/ask", params={"q": "hi", "repo": repo})
+        assert r.status_code == 400 and "aren't available" in r.json()["error"]
+    assert client.get("/api/ask", params={"q": "hi"}).status_code == 200  # the one allowed question is unspent
+
+
+def test_the_api_says_which_repos_are_live_and_at_which_commit(sample_repo, tmp_path):
+    data = _two_repo_client(sample_repo, tmp_path, []).get("/api/tools").json()
+    repos = {r["id"]: r for r in data["repos"]}
+    assert set(repos) == {"sample", "conduit"}
+    assert repos["conduit"]["commit"] == "a" * 40 and repos["conduit"]["deny"] == ["eval/"]
+
+
+def test_the_deployed_copy_of_conduit_is_found_and_named(tmp_path, monkeypatch):
+    from conduit.web.app import conduit_target
+
+    monkeypatch.setenv("CONDUIT_SELF_ROOT", str(tmp_path))
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "b" * 40)
+    target = conduit_target()
+    assert target.root == tmp_path.resolve() and target.commit == "b" * 40 and target.deny == ("eval/",)
+    monkeypatch.setenv("CONDUIT_SELF_ROOT", str(tmp_path / "missing"))
+    assert conduit_target() is None
+
+
+def test_the_page_sends_the_selected_repo_and_shows_the_answer_once():
+    js = (STATIC_DIR / "app.js").read_text()
+    assert "&repo=${currentRepo}" in js
+    assert "function displayAnswer" in js and "displayAnswer(text)" in js
+
+
+def test_the_page_never_parses_model_output_as_html():
+    """Answers quote the repository, and a repository can carry text written to
+    attack whoever renders it. Markdown is built from text nodes instead."""
+    js = (STATIC_DIR / "app.js").read_text()
+    code = "\n".join(line for line in js.splitlines() if not line.lstrip().startswith(("*", "//", "/*")))
+    assert "innerHTML" not in code and "insertAdjacentHTML" not in code and "outerHTML" not in code
+    assert "function renderInline" in js and "createTextNode" in js

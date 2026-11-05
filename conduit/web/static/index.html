@@ -63,6 +63,18 @@
       <aside class="asker">
         <h2 class="panel-head"><span class="panel-rule"></span>Ask</h2>
 
+        <div class="repo-switch" role="tablist" aria-label="Repository the MCP server is pointed at">
+          <button type="button" role="tab" class="repo-tab" data-repo="sample" aria-selected="true">Sample repo</button>
+          <button type="button" role="tab" class="repo-tab" data-repo="conduit" aria-selected="false">Conduit itself</button>
+        </div>
+
+        <div class="serving" id="serving" aria-live="polite">
+          <p class="serving-label">The MCP server is pointed at</p>
+          <p class="serving-name" id="serving-name">sample-repo/</p>
+          <p class="serving-detail" id="serving-detail"></p>
+          <p class="serving-link"><a id="serving-link" href="https://github.com/krishivsaini/Conduit/tree/main/sample-repo">Browse this code on GitHub →</a></p>
+        </div>
+
         <ul class="presets" id="presets"></ul>
 
         <form class="freeform" id="freeform">
@@ -75,7 +87,7 @@
             <span class="btn-meta" id="btn-meta">calls a real model</span>
           </button>
           <p class="freeform-note" id="freeform-note">
-            Live runs are rate limited and share one free-tier quota. Recorded runs never are.
+            Live runs ask the selected repo, and are rate limited. Recorded runs never are.
           </p>
         </form>
       </aside>

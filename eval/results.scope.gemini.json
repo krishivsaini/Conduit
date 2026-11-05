@@ -217,6 +217,106 @@
       "error": null,
       "model": "gemini-3.6-flash",
       "date": "2026-11-04"
+    },
+    {
+      "index": 4,
+      "question": "Can this server be used to read the repository's .env file? Answer True or False.",
+      "expected": "False",
+      "answer": "False",
+      "reply": "No, attempting to access `.env` using `read_file` returns an error indicating that `.env` is excluded by the server's secrets deny-list and cannot be accessed.\n\nANSWER: False",
+      "steps": [
+        {
+          "name": "read_file",
+          "arguments": {
+            "path": ".env"
+          },
+          "result_text": "Error executing tool read_file: path '.env' is excluded by the server's secrets deny-list and cannot be accessed.",
+          "is_error": true
+        }
+      ],
+      "ok": true,
+      "error": null,
+      "model": "gemini-3.6-flash",
+      "date": "2026-11-05"
+    },
+    {
+      "index": 6,
+      "question": "What does the currency formatting helper return for 1050 cents? Answer with the exact string.",
+      "expected": "$10.50",
+      "answer": "$10.50",
+      "reply": "The currency formatting helper `format_currency` in `src/utils.py` (lines 8\u201315) returns `\"$10.50\"` when passed 1050 cents.\n\nANSWER: $10.50",
+      "steps": [
+        {
+          "name": "read_file",
+          "arguments": {
+            "path": "src/utils.py"
+          },
+          "result_text": "{\n  \"path\": \"src/utils.py\",\n  \"start_line\": 1,\n  \"end_line\": 22,\n  \"total_lines\": 22,\n  \"truncated\": false,\n  \"content\": \"\\\"\\\"\\\"Shared helpers for the Ledger service.\\\"\\\"\\\"\\n\\nfrom __future__ import annotations\\n\\nCURRENCY_SYMBOL = \\\"$\\\"\\n\\n\\ndef format_currency(amount_cents: int) -> str:\\n    \\\"\\\"\\\"Format an integer amount of cents as a currency string.\\n\\n    Example:\\n        >>> format_currency(1050)\\n        '$10.50'\\n    \\\"\\\"\\\"\\n    return f\\\"{CURRENCY_SYMBOL}{amount_cents / 100:.2f}\\\"\\n\\n\\ndef redact(secret: str) -> str:\\n    \\\"\\\"\\\"Redact a secret, keeping only its last two characters visible.\\\"\\\"\\\"\\n    if len(secret) <= 2:\\n        return \\\"*\\\" * len(secret)\\n    return \\\"*\\\" * (len(secret) - 2) + secret[-2:]\"\n}",
+          "is_error": false
+        }
+      ],
+      "ok": true,
+      "error": null,
+      "model": "gemini-3.6-flash",
+      "date": "2026-11-05"
+    },
+    {
+      "index": 7,
+      "question": "Explain it like I'm five: when someone types the wrong password, what does the sign-in function give back? Answer with a single word.",
+      "expected": "None",
+      "answer": "None",
+      "reply": "In `src/auth.py` (lines 32\u201333), when the wrong password is provided, the `authenticate` function returns `None`.\n\nNone\n\nANSWER: None",
+      "steps": [
+        {
+          "name": "read_file",
+          "arguments": {
+            "path": "src/auth.py"
+          },
+          "result_text": "{\n  \"path\": \"src/auth.py\",\n  \"start_line\": 1,\n  \"end_line\": 41,\n  \"total_lines\": 41,\n  \"truncated\": false,\n  \"content\": \"\\\"\\\"\\\"Authentication and authorization for the Ledger service.\\\"\\\"\\\"\\n\\nfrom __future__ import annotations\\n\\nfrom utils import redact\\n\\n# In a real service these would come from a database. Frozen fixture data.\\n_USERS = {\\n    \\\"alice\\\": {\\\"password\\\": \\\"correct-horse\\\", \\\"role\\\": \\\"admin\\\"},\\n    \\\"bob\\\": {\\\"password\\\": \\\"hunter2\\\", \\\"role\\\": \\\"member\\\"},\\n}\\n\\n\\ndef authenticate(username: str, password: str) -> str | None:\\n    \\\"\\\"\\\"Authenticate a user by username and password.\\n\\n    Returns a session token on success. On any failure \u2014 unknown user or a\\n    wrong password \u2014 returns ``None`` rather than raising, so callers can treat\\n    authentication as a simple truthiness check.\\n\\n    Args:\\n        username: The account username.\\n        password: The plaintext password to verify.\\n\\n    Returns:\\n        A session token string on success, or ``None`` on failure.\\n    \\\"\\\"\\\"\\n    user = _USERS.get(username)\\n    if user is None:\\n        return None\\n    if user[\\\"password\\\"] != password:\\n        return None\\n    return f\\\"token::{username}::{redact(password)}\\\"\\n\\n\\ndef require_role(username: str, role: str) -> bool:\\n    \\\"\\\"\\\"Return True if ``username`` exists and holds exactly ``role``.\\\"\\\"\\\"\\n    user = _USERS.get(username)\\n    if user is None:\\n        return False\\n    return user[\\\"role\\\"] == role\"\n}",
+          "is_error": false
+        }
+      ],
+      "ok": true,
+      "error": null,
+      "model": "gemini-3.6-flash",
+      "date": "2026-11-05"
+    },
+    {
+      "index": 8,
+      "question": "I want to call the function that masks secrets for display. What is it called? Answer with just the function name.",
+      "expected": "redact",
+      "answer": "redact",
+      "reply": "The function that masks secrets for display is defined in `src/utils.py` (lines 18\u201322).\n\nANSWER: redact",
+      "steps": [
+        {
+          "name": "search_code",
+          "arguments": {
+            "query": "mask"
+          },
+          "result_text": "{\n  \"query\": \"mask\",\n  \"total_matches\": 0,\n  \"count\": 0,\n  \"offset\": 0,\n  \"has_more\": false,\n  \"next_offset\": null,\n  \"matches\": []\n}",
+          "is_error": false
+        },
+        {
+          "name": "list_symbols",
+          "arguments": {
+            "path": "src"
+          },
+          "result_text": "{\n  \"path\": \"src\",\n  \"query\": null,\n  \"total\": 7,\n  \"count\": 7,\n  \"offset\": 0,\n  \"has_more\": false,\n  \"next_offset\": null,\n  \"truncated\": false,\n  \"symbols\": [\n    {\n      \"name\": \"authenticate\",\n      \"kind\": \"function\",\n      \"path\": \"src/auth.py\",\n      \"line\": 14,\n      \"parent\": null\n    },\n    {\n      \"name\": \"require_role\",\n      \"kind\": \"function\",\n      \"path\": \"src/auth.py\",\n      \"line\": 36,\n      \"parent\": null\n    },\n    {\n      \"name\": \"PaymentError\",\n      \"kind\": \"class\",\n      \"path\": \"src/payments.py\",\n      \"line\": 11,\n      \"parent\": null\n    },\n    {\n      \"name\": \"charge\",\n      \"kind\": \"function\",\n      \"path\": \"src/payments.py\",\n      \"line\": 15,\n      \"parent\": null\n    },\n    {\n      \"name\": \"refund\",\n      \"kind\": \"function\",\n      \"path\": \"src/payments.py\",\n      \"line\": 44,\n      \"parent\": null\n    },\n    {\n      \"name\": \"format_currency\",\n      \"kind\": \"function\",\n      \"path\": \"src/utils.py\",\n      \"line\": 8,\n      \"parent\": null\n    },\n    {\n      \"name\": \"redact\",\n      \"kind\": \"function\",\n      \"path\": \"src/utils.py\",\n      \"line\": 18,\n      \"parent\": null\n    }\n  ]\n}",
+          "is_error": false
+        },
+        {
+          "name": "read_file",
+          "arguments": {
+            "path": "src/utils.py"
+          },
+          "result_text": "{\n  \"path\": \"src/utils.py\",\n  \"start_line\": 1,\n  \"end_line\": 22,\n  \"total_lines\": 22,\n  \"truncated\": false,\n  \"content\": \"\\\"\\\"\\\"Shared helpers for the Ledger service.\\\"\\\"\\\"\\n\\nfrom __future__ import annotations\\n\\nCURRENCY_SYMBOL = \\\"$\\\"\\n\\n\\ndef format_currency(amount_cents: int) -> str:\\n    \\\"\\\"\\\"Format an integer amount of cents as a currency string.\\n\\n    Example:\\n        >>> format_currency(1050)\\n        '$10.50'\\n    \\\"\\\"\\\"\\n    return f\\\"{CURRENCY_SYMBOL}{amount_cents / 100:.2f}\\\"\\n\\n\\ndef redact(secret: str) -> str:\\n    \\\"\\\"\\\"Redact a secret, keeping only its last two characters visible.\\\"\\\"\\\"\\n    if len(secret) <= 2:\\n        return \\\"*\\\" * len(secret)\\n    return \\\"*\\\" * (len(secret) - 2) + secret[-2:]\"\n}",
+          "is_error": false
+        }
+      ],
+      "ok": true,
+      "error": null,
+      "model": "gemini-3.6-flash",
+      "date": "2026-11-05"
     }
   ]
 }

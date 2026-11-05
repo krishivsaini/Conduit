@@ -41,7 +41,19 @@ uv run python scripts/record_transcripts.py            # gemini-3.6-flash
 ```
 
 Questions come from `eval/evaluation.xml`, so the page shows the same runs the
-eval grades. The script **resumes**: already-captured questions are kept, and a
+eval grades.
+
+The "Conduit itself" tab is recorded against this repository at one commit
+(HEAD by default; push it first, so the page's link to it works):
+
+```bash
+uv run python scripts/record_transcripts.py --repo conduit --provider groq
+```
+
+That extracts the commit with `git archive` (tracked files only), serves it with
+`eval/` denied, and writes `conduit/web/static/transcripts.conduit.json` with the
+commit, deny list and file count. CI replays these runs against the same commit,
+which is why its checkout fetches full history. The script **resumes**: already-captured questions are kept, and a
 quota failure stops the run with whatever it got. Re-run on a later day, or
 against another model's quota, to fill in the rest:
 
@@ -63,6 +75,11 @@ read the blueprint, or create a Docker web service manually with:
 - **Environment**: `GOOGLE_API_KEY` (secret, set in the dashboard — never
   committed), `LLM_PROVIDER=auto`, `GEMINI_MODEL=gemini-3.6-flash`,
   `CONDUIT_REPO_ROOT=/app/sample-repo`, `CONDUIT_CLIENT_IP_HEADER=cf-connecting-ip`
+- **Conduit itself, live**: the image copies the repo (as committed) to
+  `/app/repo` and sets `CONDUIT_SELF_ROOT` to it; the page shows the commit from
+  Render's `RENDER_GIT_COMMIT`. `.dockerignore` keeps local-only files out of a
+  local build; its root-only entries start with `/`, so `sample-repo/.env` (the
+  fake secret the deny-list refuses) stays in.
 - **Scope**: on by default, so live questions that aren't about the repo are
   declined at no extra model cost. `CONDUIT_SCOPE=off` turns it off.
 - **Optional fallback**: `GROQ_API_KEY` (secret). With it, `auto` moves a live

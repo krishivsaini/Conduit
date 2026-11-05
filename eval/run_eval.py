@@ -354,8 +354,10 @@ async def run(
 def write_report(output: Path, provider: str, eval_file: Path, suite: Suite = SUITES["sample"]) -> None:
     """Rebuild results.md from both checkpoints (with tools, and baseline)."""
     pairs = parse_pairs(eval_file)
-    tools = load_checkpoint(_checkpoint_path(output, provider, False))
-    base = load_checkpoint(_checkpoint_path(output, provider, True))
+    # Only questions still in the file count: a reworded question is a new one.
+    current = {q for q, _ in pairs}
+    tools = {q: r for q, r in load_checkpoint(_checkpoint_path(output, provider, False)).items() if q in current}
+    base = {q: r for q, r in load_checkpoint(_checkpoint_path(output, provider, True)).items() if q in current}
 
     def score(rows: dict[str, dict]) -> str:
         if not rows:

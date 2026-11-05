@@ -12,9 +12,16 @@ COPY conduit/ ./conduit/
 COPY sample-repo/ ./sample-repo/
 RUN uv sync --frozen --extra web
 
+# Conduit's own source, for live questions on the "Conduit itself" tab. It's the
+# deploy's own commit (Render sets RENDER_GIT_COMMIT, which the page shows), and
+# the server serves it with eval/ denied. Last, so code edits don't bust the
+# dependency layers above.
+COPY . ./repo/
+
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     CONDUIT_REPO_ROOT=/app/sample-repo \
+    CONDUIT_SELF_ROOT=/app/repo \
     PORT=8000
 
 EXPOSE 8000

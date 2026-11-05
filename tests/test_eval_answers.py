@@ -186,6 +186,9 @@ def _conduit_truth() -> dict[int, object]:
         8: dir_pattern,
         9: sum(inspect.isfunction(getattr(m, "register", None)) for m in tool_modules),
         10: _over_the_limit_status(),
+        # 11 asks whether the server reads eval/: a property of how the suite
+        # serves this repo (eval/ is denied), proven by
+        # tests/test_eval_runner.py::test_the_conduit_suite_hides_its_own_answer_key.
     }
 
 
@@ -194,11 +197,14 @@ def conduit_truth():
     return _conduit_truth()
 
 
+CONDUIT_SERVER_PROPERTIES = {11}
+
+
 def test_every_conduit_question_has_a_computed_answer(conduit_truth):
-    assert set(conduit_truth) == set(range(1, len(CONDUIT_PAIRS) + 1))
+    assert set(conduit_truth) | CONDUIT_SERVER_PROPERTIES == set(range(1, len(CONDUIT_PAIRS) + 1))
 
 
-@pytest.mark.parametrize("index", range(1, len(CONDUIT_PAIRS) + 1))
+@pytest.mark.parametrize("index", [i for i in range(1, len(CONDUIT_PAIRS) + 1) if i not in CONDUIT_SERVER_PROPERTIES])
 def test_conduit_answer_matches_the_code(conduit_truth, index):
     question, expected = CONDUIT_PAIRS[index - 1]
     actual = str(conduit_truth[index])

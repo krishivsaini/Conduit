@@ -27,12 +27,13 @@ same CLI on Gemini and on a local model, and the deny-list refusing `.env`.*
 
 | | |
 |---|---|
-| **Answers with the server vs without** | **20/20 vs 5/20** on the sample repo, **9/10 vs 2/10** on this repository, same model (`gpt-oss-120b`), strict exact-match grading ([details](#evaluation)) |
+| **Answers with the server vs without** | **20/20 vs 5/20** on the sample repo, **10/11 vs 3/11** on this repository, same model (`gpt-oss-120b`), strict exact-match grading ([details](#evaluation)) |
 | **Security, tested, not asserted** | 5 boundaries, each with a test that attempts the violation; new tests are mutation-tested (the bug is put back and the test must fail) |
 | **Prompt injection** | A poisoned repo tells the model to leak a secret. A scripted model that obeys fully, and a real one (`gpt-oss-120b`), both end with the secret appearing nowhere |
 | **Model-agnostic** | One adapter interface; Gemini, Groq and Ollama behind it. The default uses Gemini's free tier and falls back to Groq when it runs out |
 | **Stays on topic** | The public demo declines questions that aren't about the repo, at no extra model cost: 0 false refusals, and 9/10 (Groq) and 10/10 (Gemini) off-topic questions declined, including ones dressed up as on-topic ([details](#staying-on-topic)) |
-| **Tested** | 351 tests in CI on Python 3.10 and 3.13, no API keys needed; real model runs are recorded and replayed against the live server on every push |
+| **Try it on a real codebase** | The web demo serves the sample repo *and Conduit itself*: ask either one live, or replay recorded runs. The page names the repo and commit it's serving and links to that code ([details](#web-demo)) |
+| **Tested** | 372 tests in CI on Python 3.10 and 3.13, no API keys needed; real model runs are recorded and replayed against the live server on every push |
 
 ## What I found by trying to break it
 
@@ -57,8 +58,8 @@ gave way. Each fix has a test that fails if the bug comes back.
   caught `open(..., "w")` but not `Path.open("w")`, `from os import system` or
   `os.O_WRONLY`. It's now tested against all 20.
 - **My first baseline was unfair.** It told the model to use tools and then gave
-  it none, so the model said "let's search…" and stopped: 0/10. With a prompt
-  that says it has no tools, the honest number is 2/10.
+  it none, so the model said "let's search…" and stopped, scoring 0. With a
+  prompt that says it has no tools, the honest baseline is 3/11.
 
 ## How it works
 
@@ -140,7 +141,7 @@ it? Two question sets, the same model with and without tools, graded strictly.
 | Suite | With tools | Same model, no tools |
 |---|---|---|
 | Sample repo: 20 questions, 8 of them multi-step ([results](eval/results.md)) | **20/20**, 3.2 tool calls each | 5/20 |
-| This repository: 10 questions, ~350 symbols ([results](eval/results.conduit.md)) | **9/10**, 4.5 tool calls each | 2/10 |
+| This repository: 11 questions, ~350 symbols ([results](eval/results.conduit.md)) | **10/11**, 4.4 tool calls each | 3/11 |
 
 Model: `openai/gpt-oss-120b` on Groq. The no-tools passes are guesses that land
 (True/False questions, 429 as the rate-limit status); its misses are confident
@@ -158,8 +159,9 @@ How the eval is kept honest:
   with `eval/` on the deny-list.
 - **Multi-step questions with traps.** One docstring says `refund` "mirrors
   charge validation"; the code accepts a 10-cent refund that `charge` rejects.
-- **Replayable.** Every run keeps its full tool trace; CI replays the sample-repo
-  runs against the live server, so a change in server behaviour fails the build.
+- **Replayable.** Every run keeps its full tool trace. CI replays the sample-repo
+  runs, and the demo's runs on Conduit against the commit they were recorded on,
+  so a change in server behaviour fails the build.
 
 ```bash
 uv run python eval/run_eval.py --provider groq                  # sample repo
@@ -191,12 +193,11 @@ marker, which the page shows as "Declined: not about this repository".
 | Model | On-topic answered correctly | False refusals | Off-topic declined | Disguised, declined |
 |---|---|---|---|---|
 | `gpt-oss-120b` (Groq) ([results](eval/results.scope.md)) | 8/8 | 0 | 5/5 | 4/5 |
-| `gemini-3.6-flash` | 4/4 so far | 0 | 5/5 | 5/5 |
+| `gemini-3.6-flash` ([results](eval/results.scope.gemini.json)) | 8/8 | 0 | 5/5 | 5/5 |
 
-Gemini's last 4 on-topic questions wait on its daily quota. Groq's one miss was
-the "write a LinkedIn scraper" request: the model refused it under its own
-safety policy instead of with the marker, so it was declined, but the page shows
-it as a plain answer. It's a prompt rule, so it's a strong default, not a
+Groq's one miss was the "write a LinkedIn scraper" request: the model refused it
+under its own safety policy instead of with the marker, so it was declined, but
+the page shows it as a plain answer. It's a prompt rule, so it's a strong default, not a
 guarantee; the server's guarantees don't depend on it.
 
 ## Model-agnostic
@@ -221,6 +222,23 @@ A browser view of the same loop. It streams each tool call as it happens and
 shows a refusal as a *named boundary*: which guarantee fired, and the test that
 proves it. Preset questions replay real recorded runs, so the page works with
 no quota; free-text questions run live, capped per visitor and per day.
+
+The page always says which repository the server is pointed at, with a link to
+that code, so any answer can be checked against its source:
+
+- **Sample repo**: a three-file fictional billing service with intentionally
+  fake secrets.
+- **Conduit itself**: this repository, about 100 files. Live questions run
+  against the deployed commit, which the page names; the image carries a copy
+  of the repo as committed, served with `eval/` denied so the answer key can't
+  be read. The recorded runs are pinned to one commit, extracted with
+  `git archive` (tracked files only, so nothing local or private can be in a
+  recording), and CI replays them against that same commit.
+
+Visitors choose a repo from that fixed list, never by path. Answers are shown
+once (the eval's `ANSWER:` line is folded in), and Markdown in them is built
+from text nodes, never parsed as HTML: an answer can quote the repository, and
+a repository can contain text written to attack whoever displays it.
 
 ```bash
 uv sync --extra web && uv run conduit-web   # http://localhost:8000
@@ -260,7 +278,8 @@ It's deployed on Render behind Cloudflare; see [docs/deploy.md](docs/deploy.md).
 ```
 conduit/server/   the MCP server: tools/, resources/, security/, indexer, access
 conduit/host/     the assistant: MCP client, tool loop, CLI, scope rule, llm/ (one adapter per provider)
-conduit/web/      the deployable demo: Starlette app, rate limits, static page
+conduit/web/      the deployable demo: Starlette app, rate limits, static page, recorded runs
+scripts/          recording demo runs, and extracting one commit of this repo to record against
 tests/            security, discovery, tools, real-repo, prompt injection, eval, replay
 eval/             the question sets (sample, this repo, scope), runner, results, traces
 sample-repo/      the bundled target, with intentionally fake secrets

@@ -261,3 +261,16 @@ def test_every_scope_question_has_a_kind_and_the_off_topic_ones_expect_a_decline
     assert len(pairs) == len(kinds) and set(kinds) == {"on-topic", "off-topic", "disguised"}
     for (question, expected), kind in zip(pairs, kinds):
         assert (expected == "OFF_TOPIC") == (kind != "on-topic"), question
+
+
+def test_a_reworded_question_does_not_count_twice(tmp_path):
+    output = tmp_path / "results.md"
+    eval_file = ev.REPO_ROOT / "eval" / "evaluation.xml"
+    (question, expected), = ev.parse_pairs(eval_file)[:1]
+    rows = [{"index": 1, "question": question, "expected": expected, "answer": expected, "reply": "x",
+             "steps": [], "ok": True, "error": None, "model": "m", "date": "d"},
+            {"index": 1, "question": "an older wording of question 1", "expected": expected, "answer": "?",
+             "reply": "x", "steps": [], "ok": False, "error": None, "model": "m", "date": "d"}]
+    (tmp_path / "results.stub.json").write_text(json.dumps({"rubric": ev.RUBRIC, "results": rows}))
+    ev.write_report(output, "stub", eval_file)
+    assert "With tools:** 1/1 (100%)" in output.read_text()

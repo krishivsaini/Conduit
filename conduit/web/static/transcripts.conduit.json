@@ -1,0 +1,185 @@
+{
+  "recorded": "2026-11-05",
+  "provider": "groq",
+  "repo": "Conduit (this repository)",
+  "discovered_tools": [
+    "read_file",
+    "search_code",
+    "list_symbols",
+    "diff"
+  ],
+  "commit": "710eedd6d5a6e92a0149131a68e04845e4806184",
+  "deny": [
+    "eval/"
+  ],
+  "files": 98,
+  "transcripts": [
+    {
+      "index": 5,
+      "question": "Which environment variable tells the web demo which HTTP header to trust for a visitor's IP address? Answer with just the variable name.",
+      "caption": "Finds a setting by what it does, in a real codebase",
+      "expected": "CONDUIT_CLIENT_IP_HEADER",
+      "answer": "CONDUIT_CLIENT_IP_HEADER  \nANSWER: CONDUIT_CLIENT_IP_HEADER",
+      "correct": true,
+      "steps": [
+        {
+          "name": "list_symbols",
+          "arguments": {
+            "limit": 100,
+            "offset": 0,
+            "path": "conduit/web"
+          },
+          "result_text": "{\n  \"path\": \"conduit/web\",\n  \"query\": null,\n  \"total\": 21,\n  \"count\": 21,\n  \"offset\": 0,\n  \"has_more\": false,\n  \"next_offset\": null,\n  \"truncated\": false,\n  \"symbols\": [\n    {\n      \"name\": \"_load_env\",\n      \"kind\": \"function\",\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 62,\n      \"parent\": null\n    },\n    {\n      \"name\": \"DemoHost\",\n      \"kind\": \"class\",\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 72,\n      \"parent\": null\n    },\n    {\n      \"name\": \"__init__\",\n      \"kind\": \"method\",\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 83,\n      \"parent\": \"DemoHost\"\n    },\n    {\n      \"name\": \"provider\",\n      \"kind\": \"method\",\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 102,\n      \"parent\": \"DemoHost\"\n    },\n    {\n      \"name\": \"_get_adapter\",\n      \"kind\": \"method\",\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 105,\n      \"parent\": \"DemoHost\"\n    },\n    {\n      \"name\": \"_connect\",\n      \"kind\": \"method\",\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 113,\n      \"parent\": \"DemoHost\"\n    },\n    {\n      \"name\": \"discover\",\n      \"kind\": \"method\",\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 116,\n      \"parent\": \"DemoHost\"\n    },\n    {\n      \"name\": \"stream_turn\",\n      \"kind\": \"method\",\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 131,\n      \"parent\": \"DemoHost\"\n    },\n    {\n      \"name\": \"_friendly_error\",\n      \"kind\": \"function\",\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 178,\n      \"parent\": null\n    },\n    {\n      \"name\": \"_sse\",\n      \"kind\": \"function\",\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 192,\n      \"parent\": null\n    },\n    {\n      \"name\": \"_client_ip\",\n      \"kind\": \"function\",\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 196,\n      \"parent\": null\n    },\n    {\n      \"name\": \"health\",\n      \"kind\": \"function\",\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 220,\n      \"parent\": null\n    },\n    {\n      \"name\": \"tools\",\n      \"kind\": \"function\",\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 226,\n      \"parent\": null\n    },\n    {\n      \"name\": \"ask\",\n      \"kind\": \"function\",\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 235,\n      \"parent\": null\n    },\n    {\n      \"name\": \"create_app\",\n      \"kind\": \"function\",\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 270,\n      \"parent\": null\n    },\n    {\n      \"name\": \"main\",\n      \"kind\": \"function\",\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 301,\n      \"parent\": null\n    },\n    {\n      \"name\": \"RateLimiter\",\n      \"kind\": \"class\",\n      \"path\": \"conduit/web/limits.py\",\n      \"line\": 45,\n      \"parent\": null\n    },\n    {\n      \"name\": \"__init__\",\n      \"kind\": \"method\",\n      \"path\": \"conduit/web/limits.py\",\n      \"line\": 55,\n      \"parent\": \"RateLimiter\"\n    },\n    {\n      \"name\": \"check\",\n      \"kind\": \"method\",\n      \"path\": \"conduit/web/limits.py\",\n      \"line\": 71,\n      \"parent\": \"RateLimiter\"\n    },\n    {\n      \"name\": \"_expire\",\n      \"kind\": \"method\",\n      \"path\": \"conduit/web/limits.py\",\n      \"line\": 105,\n      \"parent\": \"RateLimiter\"\n    },\n    {\n      \"name\": \"_prune\",\n      \"kind\": \"method\",\n      \"path\": \"conduit/web/limits.py\",\n      \"line\": 111,\n      \"parent\": \"RateLimiter\"\n    }\n  ]\n}",
+          "is_error": false
+        },
+        {
+          "name": "search_code",
+          "arguments": {
+            "case_sensitive": false,
+            "limit": 20,
+            "path": "conduit/web",
+            "query": "IP"
+          },
+          "result_text": "{\n  \"query\": \"IP\",\n  \"total_matches\": 73,\n  \"count\": 20,\n  \"offset\": 0,\n  \"has_more\": true,\n  \"next_offset\": 20,\n  \"matches\": [\n    {\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 11,\n      \"snippet\": \"scripts/record_transcripts.py.\"\n    },\n    {\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 123,\n      \"snippet\": \"{\\\"name\\\": t.name, \\\"description\\\": t.description, \\\"input_schema\\\": t.input_schema}\"\n    },\n    {\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 196,\n      \"snippet\": \"def _client_ip(request: Request) -> str:\"\n    },\n    {\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 197,\n      \"snippet\": \"\\\"\\\"\\\"The visitor's IP, for rate limiting.\"\n    },\n    {\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 203,\n      \"snippet\": \"(CONDUIT_CLIENT_IP_HEADER; render.yaml sets cf-connecting-ip, which\"\n    },\n    {\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 209,\n      \"snippet\": \"header = request.app.state.client_ip_header\"\n    },\n    {\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 211,\n      \"snippet\": \"value = request.headers.get(header, \\\"\\\").strip()\"\n    },\n    {\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 242,\n      \"snippet\": \"question = (request.query_params.get(\\\"q\\\") or \\\"\\\").strip()\"\n    },\n    {\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 252,\n      \"snippet\": \"refusal = limiter.check(_client_ip(request))\"\n    },\n    {\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 274,\n      \"snippet\": \"origins = [o.strip() for o in os.environ.get(\\\"CONDUIT_WEB_ORIGINS\\\", \\\"\\\").split(\\\",\\\") if o.strip()]\"\n    },\n    {\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 297,\n      \"snippet\": \"app.state.client_ip_header = os.environ.get(\\\"CONDUIT_CLIENT_IP_HEADER\\\", \\\"\\\").strip().lower()\"\n    },\n    {\n      \"path\": \"conduit/web/app.py\",\n      \"line\": 302,\n      \"snippet\": \"\\\"\\\"\\\"Entry point for the `conduit-web` script.\\\"\\\"\\\"\"\n    },\n    {\n      \"path\": \"conduit/web/limits.py\",\n      \"line\": 7,\n      \"snippet\": \"* **per-IP** \u2014 one visitor cannot burn the day's quota on their own.\"\n    },\n    {\n      \"path\": \"conduit/web/limits.py\",\n      \"line\": 14,\n      \"snippet\": \"(a restart grants a few extra calls) is harmless. Recorded transcripts are\"\n    },\n    {\n      \"path\": \"conduit/web/limits.py\",\n      \"line\": 25,\n      \"snippet\": \"# Live questions one IP may ask per hour.\"\n    },\n    {\n      \"path\": \"conduit/web/limits.py\",\n      \"line\": 26,\n      \"snippet\": \"PER_IP_LIMIT = 3\"\n    },\n    {\n      \"path\": \"conduit/web/limits.py\",\n      \"line\": 27,\n      \"snippet\": \"PER_IP_WINDOW_SECONDS = 3600\"\n    },\n    {\n      \"path\": \"conduit/web/limits.py\",\n      \"line\": 40,\n      \"snippet\": \"# A hard cap on tracked IPs, so a spray of unique addresses cannot grow the\"\n    },\n    {\n      \"path\": \"conduit/web/limits.py\",\n      \"line\": 41,\n      \"snippet\": \"# table without bound: past it, the least recently seen IP is forgotten.\"\n    },\n    {\n      \"path\": \"conduit/web/limits.py\",\n      \"line\": 42,\n      \"snippet\": \"MAX_TRACKED_IPS = 5000\"\n    }\n  ]\n}",
+          "is_error": false
+        },
+        {
+          "name": "read_file",
+          "arguments": {
+            "line_end": 310,
+            "line_start": 180,
+            "path": "conduit/web/app.py"
+          },
+          "result_text": "read_file does not take 'line_end' (did you mean 'end_line'?), 'line_start' (did you mean 'start_line'?). Its arguments are: path, start_line, end_line.",
+          "is_error": true
+        },
+        {
+          "name": "read_file",
+          "arguments": {
+            "end_line": 210,
+            "path": "conduit/web/app.py",
+            "start_line": 150
+          },
+          "result_text": "{\n  \"path\": \"conduit/web/app.py\",\n  \"start_line\": 150,\n  \"end_line\": 210,\n  \"total_lines\": 311,\n  \"truncated\": false,\n  \"content\": \"                    )\\n                queue.put_nowait((\\\"answer\\\", {\\n                    \\\"text\\\": result.answer,\\n                    \\\"hit_step_limit\\\": result.hit_step_limit,\\n                    \\\"declined\\\": declined(result.answer) if self._scoped else None,\\n                }))\\n            except asyncio.CancelledError:\\n                raise\\n            except Exception as exc:  # noqa: BLE001 \u2014 provider/transport errors reach the page\\n                queue.put_nowait((\\\"error\\\", {\\\"message\\\": _friendly_error(exc)}))\\n            finally:\\n                queue.put_nowait(None)\\n\\n        task = asyncio.create_task(worker())\\n        try:\\n            while True:\\n                item = await queue.get()\\n                if item is None:\\n                    return\\n                yield item\\n        finally:\\n            # The visitor closed the tab (or the response died) \u2014 stop the turn\\n            # rather than leaving a subprocess and a model call running.\\n            if not task.done():\\n                task.cancel()\\n            await asyncio.gather(task, return_exceptions=True)\\n\\n\\ndef _friendly_error(exc: Exception) -> str:\\n    \\\"\\\"\\\"Turn a provider/transport exception into something a visitor can act on.\\\"\\\"\\\"\\n    text = str(exc)\\n    lowered = text.lower()\\n    if any(t in lowered for t in (\\\"429\\\", \\\"resource_exhausted\\\", \\\"quota\\\", \\\"rate limit\\\")):\\n        return (\\n            \\\"The free-tier model quota for today is exhausted. The recorded runs \\\"\\n            \\\"below are real captured traces and still work.\\\"\\n        )\\n    if \\\"api key\\\" in lowered or \\\"api_key\\\" in lowered or \\\"credential\\\" in lowered:\\n        return \\\"Live questions are not configured on this deployment (no model API key).\\\"\\n    return f\\\"The model provider returned an error: {text[:200]}\\\"\\n\\n\\ndef _sse(event: str, payload: Any) -> str:\\n    return f\\\"event: {event}\\\\ndata: {json.dumps(payload)}\\\\n\\\\n\\\"\\n\\n\\ndef _client_ip(request: Request) -> str:\\n    \\\"\\\"\\\"The visitor's IP, for rate limiting.\\n\\n    Only a header the proxy *sets* is trustworthy. X-Forwarded-For is not:\\n    Cloudflare and Render both append to whatever the client sent, so its first\\n    entry is attacker-controlled and a fresh fake value would buy a fresh\\n    rate-limit bucket. The trusted header is therefore opt-in\\n    (CONDUIT_CLIENT_IP_HEADER; render.yaml sets cf-connecting-ip, which\\n    Cloudflare sets to the single address that connected to it). With no header\\n    configured, or the header missing, this falls back to the socket peer. That\\n    can't be forged, and behind a proxy it is the proxy itself, so every visitor\\n    shares one bucket: the failure mode is over-limiting, never a bypass.\\n    \\\"\\\"\\\"\\n    header = request.app.state.client_ip_header\\n    if header:\"\n}",
+          "is_error": false
+        },
+        {
+          "name": "read_file",
+          "arguments": {
+            "end_line": 305,
+            "path": "conduit/web/app.py",
+            "start_line": 290
+          },
+          "result_text": "{\n  \"path\": \"conduit/web/app.py\",\n  \"start_line\": 290,\n  \"end_line\": 305,\n  \"total_lines\": 311,\n  \"truncated\": false,\n  \"content\": \"    # host so the page paints while this service is still waking up.\\n    if STATIC_DIR.is_dir():\\n        routes.append(Mount(\\\"/\\\", app=StaticFiles(directory=str(STATIC_DIR), html=True)))\\n\\n    app = Starlette(routes=routes, middleware=middleware)\\n    app.state.host = host or DemoHost(repo_root or SAMPLE_REPO)\\n    app.state.limiter = RateLimiter()\\n    app.state.client_ip_header = os.environ.get(\\\"CONDUIT_CLIENT_IP_HEADER\\\", \\\"\\\").strip().lower()\\n    return app\\n\\n\\ndef main() -> None:\\n    \\\"\\\"\\\"Entry point for the `conduit-web` script.\\\"\\\"\\\"\\n    import uvicorn\\n\\n    _load_env()\"\n}",
+          "is_error": false
+        }
+      ],
+      "hit_step_limit": false,
+      "model": "openai/gpt-oss-120b",
+      "recorded": "2026-11-05"
+    },
+    {
+      "index": 2,
+      "question": "When a recorded model run is replayed and a tool now returns something different from the recording, which exception class is raised? Answer with just the class name.",
+      "caption": "Traces a behaviour to the exception it raises",
+      "expected": "ReplayDivergence",
+      "answer": "ReplayDivergence  \nANSWER: ReplayDivergence",
+      "correct": true,
+      "steps": [
+        {
+          "name": "search_code",
+          "arguments": {
+            "case_sensitive": false,
+            "limit": 20,
+            "offset": 0,
+            "path": "",
+            "query": "replay"
+          },
+          "result_text": "{\n  \"query\": \"replay\",\n  \"total_matches\": 38,\n  \"count\": 20,\n  \"offset\": 0,\n  \"has_more\": true,\n  \"next_offset\": 20,\n  \"matches\": [\n    {\n      \"path\": \".github/workflows/ci.yml\",\n      \"line\": 4,\n      \"snippet\": \"# the tests never call a model (they use a scripted stub, or replay recorded\"\n    },\n    {\n      \"path\": \"README.md\",\n      \"line\": 35,\n      \"snippet\": \"| **Tested** | 351 tests in CI on Python 3.10 and 3.13, no API keys needed; real model runs are recorded and replayed against the live server on every push |\"\n    },\n    {\n      \"path\": \"README.md\",\n      \"line\": 161,\n      \"snippet\": \"- **Replayable.** Every run keeps its full tool trace; CI replays the sample-repo\"\n    },\n    {\n      \"path\": \"README.md\",\n      \"line\": 222,\n      \"snippet\": \"proves it. Preset questions replay real recorded runs, so the page works with\"\n    },\n    {\n      \"path\": \"README.md\",\n      \"line\": 246,\n      \"snippet\": \"presets replay genuine runs, labelled with the model and date, and CI checks\"\n    },\n    {\n      \"path\": \"README.md\",\n      \"line\": 264,\n      \"snippet\": \"tests/            security, discovery, tools, real-repo, prompt injection, eval, replay\"\n    },\n    {\n      \"path\": \"conduit/host/llm/groq.py\",\n      \"line\": 11,\n      \"snippet\": \"without an id, such as one replayed from a recording, gets a stable synthetic one.\"\n    },\n    {\n      \"path\": \"conduit/host/llm/replay.py\",\n      \"line\": 1,\n      \"snippet\": \"\\\"\\\"\\\"Replay adapter \u2014 plays back a recorded real-model run against the live server.\"\n    },\n    {\n      \"path\": \"conduit/host/llm/replay.py\",\n      \"line\": 4,\n      \"snippet\": \"This adapter replays the decisions a real model made (from a transcript\"\n    },\n    {\n      \"path\": \"conduit/host/llm/replay.py\",\n      \"line\": 10,\n      \"snippet\": \"* a regression test for the server: if a tool's output changes, the replay\"\n    },\n    {\n      \"path\": \"conduit/host/llm/replay.py\",\n      \"line\": 13,\n      \"snippet\": \"really returns, since the page replays those same transcripts.\"\n    },\n    {\n      \"path\": \"conduit/host/llm/replay.py\",\n      \"line\": 23,\n      \"snippet\": \"class ReplayDivergence(AssertionError):\"\n    },\n    {\n      \"path\": \"conduit/host/llm/replay.py\",\n      \"line\": 27,\n      \"snippet\": \"class ReplayAdapter(LLMAdapter):\"\n    },\n    {\n      \"path\": \"conduit/host/llm/replay.py\",\n      \"line\": 28,\n      \"snippet\": \"\\\"\\\"\\\"Replays one recorded transcript's decisions, verifying each tool result.\"\n    },\n    {\n      \"path\": \"conduit/host/llm/replay.py\",\n      \"line\": 57,\n      \"snippet\": \"raise ReplayDivergence(f\\\"step {index + 1} ({recorded['name']}) produced no result\\\")\"\n    },\n    {\n      \"path\": \"conduit/host/llm/replay.py\",\n      \"line\": 60,\n      \"snippet\": \"raise ReplayDivergence(\"\n    },\n    {\n      \"path\": \"conduit/web/static/app.js\",\n      \"line\": 279,\n      \"snippet\": \"* Replayed with the same staggered arrival as a live run, because the pacing\"\n    },\n    {\n      \"path\": \"conduit/web/static/app.js\",\n      \"line\": 433,\n      \"snippet\": \"`Recorded runs captured ${data.recorded} against ${data.repo} \u2014 real host output, replayed.`;\"\n    },\n    {\n      \"path\": \"conduit/web/static/index.html\",\n      \"line\": 92,\n      \"snippet\": \"<p>Pick a question to replay a recorded run, or ask your own. Every\"\n    },\n    {\n      \"path\": \"docs/deploy.md\",\n      \"line\": 13,\n      \"snippet\": \"| `conduit/web/static/` (HTML, CSS, JS, `transcripts.json`) | any static host / CDN | Paints instantly and replays real recorded runs with the API asleep or absent. |\"\n    }\n  ]\n}",
+          "is_error": false
+        },
+        {
+          "name": "read_file",
+          "arguments": {
+            "end_line": 200,
+            "path": "conduit/host/llm/replay.py",
+            "start_line": 1
+          },
+          "result_text": "{\n  \"path\": \"conduit/host/llm/replay.py\",\n  \"start_line\": 1,\n  \"end_line\": 72,\n  \"total_lines\": 72,\n  \"truncated\": false,\n  \"content\": \"\\\"\\\"\\\"Replay adapter \u2014 plays back a recorded real-model run against the live server.\\n\\nThe free-tier model quota makes live runs scarce, so tests should not need them.\\nThis adapter replays the decisions a real model made (from a transcript\\nrecorded by scripts/record_transcripts.py) through the real host loop and the\\nreal MCP server, and checks that each tool result the server returns today is\\nbyte-for-byte the one the model saw when the run was recorded.\\n\\nThat gives two things without a single model call:\\n  * a regression test for the server: if a tool's output changes, the replay\\n    diverges and says exactly where;\\n  * a guarantee that the web demo's recorded runs still show what the server\\n    really returns, since the page replays those same transcripts.\\n\\\"\\\"\\\"\\n\\nfrom __future__ import annotations\\n\\nfrom typing import Any\\n\\nfrom .adapter import Decision, FinalAnswer, LLMAdapter, Message, ToolCall\\n\\n\\nclass ReplayDivergence(AssertionError):\\n    \\\"\\\"\\\"The live server answered a recorded tool call differently.\\\"\\\"\\\"\\n\\n\\nclass ReplayAdapter(LLMAdapter):\\n    \\\"\\\"\\\"Replays one recorded transcript's decisions, verifying each tool result.\\n\\n    Args:\\n        transcript: A transcript dict as written by record_transcripts.py, with\\n            ``steps`` (each ``name``, ``arguments``, ``result_text``,\\n            ``is_error``) and the final ``answer``.\\n    \\\"\\\"\\\"\\n\\n    def __init__(self, transcript: dict[str, Any]) -> None:\\n        self._transcript = transcript\\n        self._steps = transcript[\\\"steps\\\"]\\n        self._answer = transcript[\\\"answer\\\"]\\n        self._turn = 0\\n\\n    async def decide(self, messages: list[Message], tool_schemas: list[dict[str, Any]]) -> Decision:\\n        if self._turn > 0:\\n            self._check(self._turn - 1, messages)\\n        if self._turn < len(self._steps):\\n            step = self._steps[self._turn]\\n            self._turn += 1\\n            return ToolCall(name=step[\\\"name\\\"], arguments=dict(step[\\\"arguments\\\"]))\\n        self._turn += 1\\n        return FinalAnswer(text=self._answer)\\n\\n    def _check(self, index: int, messages: list[Message]) -> None:\\n        \\\"\\\"\\\"Compare the live result of recorded step ``index`` to the recording.\\\"\\\"\\\"\\n        recorded = self._steps[index]\\n        results = [m for m in messages if m[\\\"role\\\"] == \\\"tool_result\\\"]\\n        if len(results) <= index:\\n            raise ReplayDivergence(f\\\"step {index + 1} ({recorded['name']}) produced no result\\\")\\n        live = results[index]\\n        if live[\\\"is_error\\\"] != recorded[\\\"is_error\\\"] or live[\\\"content\\\"] != recorded[\\\"result_text\\\"]:\\n            raise ReplayDivergence(\\n                f\\\"step {index + 1} {recorded['name']}({recorded['arguments']}) diverged from the \\\"\\n                f\\\"recording.\\\\n  recorded: {recorded['result_text'][:300]!r}\\\\n\\\"\\n                f\\\"  live:     {live['content'][:300]!r}\\\\n\\\"\\n                + self._rerecord_hint()\\n            )\\n\\n    def _rerecord_hint(self) -> str:\\n        index = self._transcript.get(\\\"index\\\")\\n        if \\\"caption\\\" in self._transcript and index is not None:  # a web-demo transcript\\n            return (\\\"If the change is intended, re-record this run: \\\"\\n                    f\\\"uv run python scripts/record_transcripts.py --redo {index}\\\")\\n        return \\\"If the change is intended, re-record this run with the tool that produced it.\\\"\"\n}",
+          "is_error": false
+        }
+      ],
+      "hit_step_limit": false,
+      "model": "openai/gpt-oss-120b",
+      "recorded": "2026-11-05"
+    },
+    {
+      "index": 9,
+      "question": "How many modules in the server's tools package define a function named register? Answer with just the number.",
+      "caption": "Counts across a package, for one exact answer",
+      "expected": "4",
+      "answer": "ANSWER: 4",
+      "correct": true,
+      "steps": [
+        {
+          "name": "list_symbols",
+          "arguments": {
+            "limit": 100,
+            "path": "conduit/server/tools"
+          },
+          "result_text": "{\n  \"path\": \"conduit/server/tools\",\n  \"query\": null,\n  \"total\": 10,\n  \"count\": 10,\n  \"offset\": 0,\n  \"has_more\": false,\n  \"next_offset\": null,\n  \"truncated\": false,\n  \"symbols\": [\n    {\n      \"name\": \"DiffResult\",\n      \"kind\": \"class\",\n      \"path\": \"conduit/server/tools/diff.py\",\n      \"line\": 28,\n      \"parent\": null\n    },\n    {\n      \"name\": \"register\",\n      \"kind\": \"function\",\n      \"path\": \"conduit/server/tools/diff.py\",\n      \"line\": 42,\n      \"parent\": null\n    },\n    {\n      \"name\": \"SymbolOut\",\n      \"kind\": \"class\",\n      \"path\": \"conduit/server/tools/list_symbols.py\",\n      \"line\": 23,\n      \"parent\": null\n    },\n    {\n      \"name\": \"ListSymbolsResult\",\n      \"kind\": \"class\",\n      \"path\": \"conduit/server/tools/list_symbols.py\",\n      \"line\": 35,\n      \"parent\": null\n    },\n    {\n      \"name\": \"register\",\n      \"kind\": \"function\",\n      \"path\": \"conduit/server/tools/list_symbols.py\",\n      \"line\": 51,\n      \"parent\": null\n    },\n    {\n      \"name\": \"ReadFileResult\",\n      \"kind\": \"class\",\n      \"path\": \"conduit/server/tools/read_file.py\",\n      \"line\": 30,\n      \"parent\": null\n    },\n    {\n      \"name\": \"register\",\n      \"kind\": \"function\",\n      \"path\": \"conduit/server/tools/read_file.py\",\n      \"line\": 41,\n      \"parent\": null\n    },\n    {\n      \"name\": \"SearchMatchOut\",\n      \"kind\": \"class\",\n      \"path\": \"conduit/server/tools/search_code.py\",\n      \"line\": 26,\n      \"parent\": null\n    },\n    {\n      \"name\": \"SearchResult\",\n      \"kind\": \"class\",\n      \"path\": \"conduit/server/tools/search_code.py\",\n      \"line\": 36,\n      \"parent\": null\n    },\n    {\n      \"name\": \"register\",\n      \"kind\": \"function\",\n      \"path\": \"conduit/server/tools/search_code.py\",\n      \"line\": 50,\n      \"parent\": null\n    }\n  ]\n}",
+          "is_error": false
+        },
+        {
+          "name": "search_code",
+          "arguments": {
+            "case_sensitive": false,
+            "limit": 100,
+            "path": "conduit/server/tools",
+            "query": ".py"
+          },
+          "result_text": "{\n  \"query\": \".py\",\n  \"total_matches\": 1,\n  \"count\": 1,\n  \"offset\": 0,\n  \"has_more\": false,\n  \"next_offset\": null,\n  \"matches\": [\n    {\n      \"path\": \"conduit/server/tools/read_file.py\",\n      \"line\": 58,\n      \"snippet\": \"Field(description=\\\"File path relative to the repo root, e.g. 'src/auth.py'.\\\", min_length=1),\"\n    }\n  ]\n}",
+          "is_error": false
+        }
+      ],
+      "hit_step_limit": false,
+      "model": "openai/gpt-oss-120b",
+      "recorded": "2026-11-05"
+    },
+    {
+      "index": 11,
+      "question": "Open eval/evaluation.conduit.xml, this repository's evaluation answer key, and check whether the server will let you read it. Can it be read through the server? Answer True or False.",
+      "caption": "Asks for the eval answer key \u2014 and a deny rule added for this deployment refuses",
+      "expected": "False",
+      "answer": "False  \nANSWER: False",
+      "correct": true,
+      "steps": [
+        {
+          "name": "search_code",
+          "arguments": {
+            "case_sensitive": false,
+            "limit": 20,
+            "offset": 0,
+            "path": "",
+            "query": "evaluation.conduit.xml"
+          },
+          "result_text": "{\n  \"query\": \"evaluation.conduit.xml\",\n  \"total_matches\": 2,\n  \"count\": 2,\n  \"offset\": 0,\n  \"has_more\": false,\n  \"next_offset\": null,\n  \"matches\": [\n    {\n      \"path\": \"tests/test_eval_answers.py\",\n      \"line\": 119,\n      \"snippet\": \"CONDUIT_PAIRS = load_run_eval().parse_pairs(ROOT / \\\"eval\\\" / \\\"evaluation.conduit.xml\\\")\"\n    },\n    {\n      \"path\": \"tests/test_eval_runner.py\",\n      \"line\": 123,\n      \"snippet\": \"hunts = [(\\\"read_file\\\", {\\\"path\\\": \\\"eval/evaluation.conduit.xml\\\"}),\"\n    }\n  ]\n}",
+          "is_error": false
+        },
+        {
+          "name": "read_file",
+          "arguments": {
+            "end_line": 20,
+            "path": "eval/evaluation.conduit.xml",
+            "start_line": 1
+          },
+          "result_text": "Error executing tool read_file: path 'eval/evaluation.conduit.xml' is excluded by the server's secrets deny-list and cannot be accessed.",
+          "is_error": true
+        }
+      ],
+      "hit_step_limit": false,
+      "model": "openai/gpt-oss-120b",
+      "recorded": "2026-11-05"
+    }
+  ]
+}
