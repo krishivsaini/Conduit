@@ -88,13 +88,18 @@ def test_the_real_server_refuses_to_build_with_a_write_tool(sample_repo, monkeyp
 # Method names that are inherently write/delete/exec regardless of receiver.
 ALWAYS_FORBIDDEN_METHODS = {
     "write_text", "write_bytes", "unlink", "mkdir", "rmdir", "makedirs",
-    "rmtree", "symlink_to", "hardlink_to", "touch", "rename", "chmod", "lchmod",
+    "rmtree", "symlink_to", "hardlink_to", "link_to", "touch", "rename", "chmod", "lchmod",
 }
 # Dangerous os.* calls (receiver must be the `os` module).
 OS_FORBIDDEN = {
     "system", "popen", "remove", "removedirs", "rename", "renames", "replace",
-    "unlink", "rmdir", "mkdir", "makedirs", "execv", "execve", "execvp",
-    "execvpe", "spawnv", "spawnl", "spawnve", "chmod", "chown", "truncate",
+    "unlink", "rmdir", "mkdir", "makedirs", "mkfifo", "mknod",
+    "symlink", "link", "utime", "chmod", "lchmod", "chown", "lchown", "chflags",
+    "lchflags", "setxattr", "removexattr", "truncate", "ftruncate",
+    "write", "pwrite", "writev", "pwritev", "sendfile", "copy_file_range",
+    "fork", "forkpty", "kill", "killpg", "startfile", "posix_spawn", "posix_spawnp",
+    "execl", "execle", "execlp", "execlpe", "execv", "execve", "execvp", "execvpe",
+    "spawnl", "spawnle", "spawnlp", "spawnlpe", "spawnv", "spawnve", "spawnvp", "spawnvpe",
 }
 FORBIDDEN_MODULES = {"subprocess", "shutil"}
 # os.open() flags that write or create. Any reference to one is a violation.
@@ -162,6 +167,11 @@ def _scan_source(source: str, name: str) -> list[str]:
                 receiver = func.value.id if isinstance(func.value, ast.Name) else None
                 if func.attr in ALWAYS_FORBIDDEN_METHODS:
                     flag(node, f".{func.attr}()")
+                elif func.attr == "replace" and len(node.args) == 1 and not node.keywords:
+                    # Path.replace(target) moves a file over another. str and
+                    # bytes .replace need two arguments, and date/time
+                    # .replace takes keywords, so one bare argument is a Path.
+                    flag(node, ".replace(target) (Path.replace)")
                 elif func.attr == "open" and receiver not in os_names:
                     if _mode_is_write(node, 1 if receiver in OPEN_MODE_SECOND else 0):
                         flag(node, f"{receiver or '<path>'}.open(..., write mode)")
@@ -215,6 +225,14 @@ MUST_FLAG = [
     'import importlib\nimportlib.import_module("shutil")',
     'eval("1")',
     'exec("x = 1")',
+    'from pathlib import Path\nPath("a").replace("b")',
+    'from pathlib import Path\np = Path("a")\np.replace(p.with_suffix(".bak"))',
+    'import os\nos.symlink("/etc/passwd", "link")',
+    'import os\nos.link("a", "b")',
+    'import os\nos.utime("f")',
+    'import os\nos.write(1, b"x")',
+    'import os\nos.posix_spawn("/bin/ls", ["ls"], {})',
+    'from os import symlink',
 ]
 
 MUST_ALLOW = [
@@ -226,6 +244,10 @@ MUST_ALLOW = [
     'import os\nos.environ.get("X")',
     'import os\nos.open("f", os.O_RDONLY)',
     '"a b".replace(" ", "")',
+    '"a b".replace(" ", "", 1)',
+    'import datetime\ndatetime.date(2000, 1, 1).replace(year=2001)',
+    'import os\nos.stat("f")',
+    'import os\nos.path.join("a", "b")',
 ]
 
 

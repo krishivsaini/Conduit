@@ -75,20 +75,57 @@ async def test_a_per_minute_limit_has_a_short_cooldown():
     assert await auto.decide(turn(), []) == FinalAnswer("gemini")
 
 
+class Caller(Provider):
+    """Calls a tool, as a provider does mid-question."""
+
+    async def decide(self, messages, tool_schemas):
+        await super().decide(messages, tool_schemas)
+        return ToolCall("read_file", {"path": "a.py"}, {"id": self.model})
+
+
+def step(messages: list[dict], decision: ToolCall) -> None:
+    """Append a tool call and its result exactly as conduit/host/loop.py does."""
+    messages += [{"role": "tool_call", "name": decision.name, "arguments": decision.arguments,
+                  "meta": decision.provider_meta},
+                 {"role": "tool_result", "name": decision.name, "content": "x", "is_error": False}]
+
+
 async def test_a_switched_question_finishes_on_the_fallback():
     """Gemini 3 can't continue tool calls another model made, so switching
     back waits for the next question even if the cooldown has ended."""
     clock = Clock()
-    gemini, groq = Provider("gemini", [PER_MINUTE]), Provider("groq")
+    gemini, groq = Caller("gemini", [PER_MINUTE]), Caller("groq")
     auto = FallbackAdapter(gemini, groq, clock=clock)
     messages = turn()
-    await auto.decide(messages, [])
-    messages += [{"role": "tool_call", "name": "read_file", "arguments": {}},
-                 {"role": "tool_result", "name": "read_file", "content": "x", "is_error": False}]
+    step(messages, await auto.decide(messages, []))
     clock.now = PER_MINUTE_COOLDOWN * 10
-    assert await auto.decide(messages, []) == FinalAnswer("groq")
+    second = await auto.decide(messages, [])
+    assert second.provider_meta["id"] == "groq"
     assert gemini.calls == 1
-    assert await auto.decide(turn(), []) == FinalAnswer("gemini")  # the next question
+    assert (await auto.decide(turn(), [])).provider_meta["id"] == "gemini"  # the next question
+
+
+async def test_concurrent_questions_each_keep_their_own_provider():
+    """The web demo shares one adapter across concurrent questions. Question A
+    switches to Groq; question B starts inside the cooldown, so it runs on Groq
+    too; then the cooldown ends. Both must finish on Groq (neither may hand
+    Gemini Groq's tool calls), and only a new question goes back to Gemini."""
+    clock = Clock()
+    gemini, groq = Caller("gemini", [PER_MINUTE]), Caller("groq")
+    auto = FallbackAdapter(gemini, groq, clock=clock)
+    a, b = turn(), turn()
+    step(a, await auto.decide(a, []))  # A: Gemini is limited, so Groq
+    step(b, await auto.decide(b, []))  # B: inside the cooldown, so Groq
+    clock.now = PER_MINUTE_COOLDOWN
+    assert (await auto.decide(a, [])).provider_meta["id"] == "groq"
+    assert (await auto.decide(b, [])).provider_meta["id"] == "groq"
+    assert gemini.calls == 1
+    assert (await auto.decide(turn(), [])).provider_meta["id"] == "gemini"
+
+
+async def test_the_primarys_own_tool_calls_are_not_marked():
+    auto = FallbackAdapter(Caller("gemini"), Caller("groq"), clock=Clock())
+    assert (await auto.decide(turn(), [])).provider_meta == {"id": "gemini"}
 
 
 async def test_other_errors_are_not_hidden_by_a_switch():

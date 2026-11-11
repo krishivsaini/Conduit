@@ -20,10 +20,18 @@ from starlette.testclient import TestClient
 
 from conduit.host.client import MCPCodebaseClient, conduit_server_params
 from conduit.host.llm.adapter import FinalAnswer, ToolCall
+from conduit.host.llm.groq import TOOL_CALL_RETRIES
 from conduit.host.llm.stub import StubAdapter
 from conduit.host.loop import run_turn
-from conduit.web.app import MAX_QUESTION_CHARS, STATIC_DIR, DemoHost, Target, create_app
-from conduit.web.limits import RateLimiter
+from conduit.web.app import (
+    MAX_QUESTION_CHARS,
+    STATIC_DIR,
+    WEB_MAX_STEPS,
+    DemoHost,
+    Target,
+    create_app,
+)
+from conduit.web.limits import GLOBAL_DAILY_LIMIT, RateLimiter
 
 
 def _client(sample_repo, script) -> TestClient:
@@ -241,6 +249,26 @@ def test_global_daily_ceiling_applies_across_visitors():
     assert refusal is not None and "daily budget" in refusal
 
 
+def test_one_live_question_makes_at_most_web_max_steps_plus_one_model_calls(sample_repo):
+    """A model that never stops calling tools: the web budget, not the CLI's,
+    is what bounds it, plus the one forced no-tools answer."""
+    stub = StubAdapter([ToolCall(name="search_code", arguments={"query": "x"})] * 50)
+    client = TestClient(create_app(host=DemoHost(sample_repo, provider="stub", adapter=stub)))
+    events = _events(client.get("/api/ask", params={"q": "where is x?"}))
+    assert [e for e, _ in events].count("step") == WEB_MAX_STEPS
+    assert len(stub.calls) == WEB_MAX_STEPS + 1
+
+
+def test_the_daily_bound_in_the_limiter_comment_is_still_true():
+    """conduit/web/limits.py states the day's worst case in model calls. If a
+    constant changes, this fails until that comment says the new numbers."""
+    calls = GLOBAL_DAILY_LIMIT * (WEB_MAX_STEPS + 1)
+    assert calls == 56
+    assert calls * (TOOL_CALL_RETRIES + 1) == 168
+    comment = (Path(__file__).parents[1] / "conduit/web/limits.py").read_text()
+    assert "= 56 model calls a day" in comment and "168 Groq requests" in comment
+
+
 def test_ask_returns_429_once_the_limit_is_reached(sample_repo):
     app = create_app(host=DemoHost(sample_repo, provider="stub", adapter=StubAdapter([])))
     app.state.limiter = RateLimiter(per_ip=1, per_ip_window=60, global_daily=10)
@@ -334,8 +362,8 @@ def test_empty_state_does_not_assume_the_two_column_layout():
 
 
 def test_auto_with_no_keys_says_live_questions_are_not_configured(monkeypatch):
-    from conduit.web.app import _friendly_error
     from conduit.host.llm.adapter import get_adapter
+    from conduit.web.app import _friendly_error
 
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.delenv("GROQ_API_KEY", raising=False)

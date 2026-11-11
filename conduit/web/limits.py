@@ -31,9 +31,16 @@ PER_IP_WINDOW_SECONDS = 3600
 # Sized against a measured constraint, not a guess: the Gemini free tier allows
 # 20 generate_content requests per day *per model*, and one question costs one
 # request per loop step (2-4 in practice). This counts questions, not model
-# calls, so the hard bound is 8 x (MAX_STEPS + 1 forced answer) = 72 calls a day;
-# beyond Gemini's quota they go to the paid Groq fallback, if one is configured.
-# Set it higher only knowing that bound.
+# calls, so the hard bound is in model calls per question, with the web demo's
+# step budget (conduit/web/app.py), not the CLI's:
+#
+#   8 questions x (WEB_MAX_STEPS 6 + 1 forced answer) = 56 model calls a day.
+#
+# Past Gemini's quota they go to the paid Groq fallback, if one is configured,
+# where one model call is at most 3 requests (a tool call Groq rejects is
+# retried twice, conduit/host/llm/groq.py), so 168 Groq requests a day at most.
+# tests/test_web.py recomputes both numbers from the constants, so changing one
+# fails CI until this comment is updated. Set it higher only knowing the bound.
 GLOBAL_DAILY_LIMIT = 8
 DAY_SECONDS = 86400
 

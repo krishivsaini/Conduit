@@ -195,7 +195,10 @@ adapter.decide(messages, tool_schemas) -> ToolCall(name, arguments) | FinalAnswe
   doesn't know it exists. Only rate limits switch; a question that switched
   finishes on Groq, because Gemini 3 can't continue tool calls it didn't make
   (its thought signatures); Gemini is tried again at the next question after a
-  cooldown (a minute, or an hour after a daily limit).
+  cooldown (a minute, or an hour after a daily limit). One adapter serves
+  concurrent questions in the web demo, so a question's provider isn't stored in
+  the adapter: the fallback marks the tool calls it makes (in `provider_meta`),
+  and a question whose history holds a marked call stays on Groq.
 - `scope.apply_scope` adds a scope rule to an adapter's system prompt for the
   public demo: answer questions about the repository, decline anything else
   with an `OFF_TOPIC:` marker in the same call (no extra model calls). It is a

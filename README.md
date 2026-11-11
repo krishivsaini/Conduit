@@ -33,7 +33,7 @@ same CLI on Gemini and on a local model, and the deny-list refusing `.env`.*
 | **Model-agnostic** | One adapter interface; Gemini, Groq and Ollama behind it. The default uses Gemini's free tier and falls back to Groq when it runs out |
 | **Stays on topic** | The public demo declines questions that aren't about the repo, at no extra model cost: 0 false refusals, and every off-topic question declined in the latest runs on both models (28 of 30 across three Groq runs), including ones dressed up as on-topic ([details](#staying-on-topic)) |
 | **Try it on a real codebase** | The web demo serves the sample repo *and Conduit itself*: ask either one live, or replay recorded runs. The page names the repo and commit it's serving and links to that code ([details](#web-demo)) |
-| **Tested** | 390 tests in CI on Python 3.10 and 3.13, no API keys needed; real model runs are recorded and replayed against the live server on every push |
+| **Tested** | 412 tests in CI on Python 3.10 and 3.13, no API keys needed; real model runs are recorded and replayed against the live server on every push |
 
 ## What I found by trying to break it
 
@@ -59,7 +59,18 @@ gave way. Each fix has a test that fails if the bug comes back.
   and the real-repo suite from 10/11 to 11/11.
 - **The read-only check missed 14 of 20 ways to write a file.** The static scan
   caught `open(..., "w")` but not `Path.open("w")`, `from os import system` or
-  `os.O_WRONLY`. It's now tested against all 20.
+  `os.O_WRONLY`. A second pass found 8 more (`Path.replace`, `os.symlink`,
+  `os.link`, `os.utime`, `os.write` among them). It's now tested against all 28.
+- **Two questions at once could hand Gemini another model's tool calls.** The
+  fallback remembered *one* question as "switched to Groq", and the demo runs two
+  at a time, so a second switched question took the slot and the first went back
+  to Gemini mid-answer. The fallback now marks its own tool calls, and each
+  question's history says which model it belongs to.
+- **The strict grader failed a correct answer with a full stop after it.**
+  `` ANSWER: `src/auth.py`. `` was marked wrong, because the markup was unwrapped
+  before the full stop was removed. No recorded run was affected (all 70 graded
+  rows regrade the same), but a grader that can be wrong in one direction can't
+  be trusted in the other.
 - **My first baseline was unfair.** It told the model to use tools and then gave
   it none, so the model said "let's search…" and stopped, scoring 0. With a
   prompt that says it has no tools, the honest baseline is 3/11.
@@ -125,7 +136,7 @@ npx @modelcontextprotocol/inspector uv run conduit-server --repo-root ./sample-r
 |---|---|---|
 | **Repo-root confinement** | resolves `..` *and* symlinks, then refuses anything outside the root | [`test_security_traversal.py`](tests/test_security_traversal.py): 14 cases, incl. symlink escape |
 | **Secrets deny-list** | `.env`, `*.key`, `*.pem`, `.git/`, `id_rsa`, … are never read, searched or listed. Matched on the *resolved* path, so `notes.txt → .env` is refused too. Deployments can add patterns, never remove the defaults | [`test_security_denylist.py`](tests/test_security_denylist.py), [`test_real_repo.py`](tests/test_real_repo.py) |
-| **Read-only** | no tool writes or executes; the server refuses to start if a non-read-only tool is registered | [`test_security_readonly.py`](tests/test_security_readonly.py): a startup guard test, plus a static scan tested against 20 write/exec patterns |
+| **Read-only** | no tool writes or executes; the server refuses to start if a non-read-only tool is registered | [`test_security_readonly.py`](tests/test_security_readonly.py): a startup guard test, plus a static scan tested against 28 write/exec patterns |
 | **The repo's own exclusions** | what `.gitignore` excludes (nested files and `.git/info/exclude` too) and vendor dirs are neither listed nor served. A `!.env` rule can't re-include a secret | [`test_real_repo.py`](tests/test_real_repo.py) |
 | **Bounded output** | reads are line-capped; search and symbol listings page; the tree collapses to fit the model's context instead of being cut off | [`test_tools.py`](tests/test_tools.py), [`test_real_repo.py`](tests/test_real_repo.py) |
 

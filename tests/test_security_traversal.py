@@ -6,6 +6,8 @@ made real — the boundary is not asserted, it is tested against attacks.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from conduit.server.security.boundary import PathOutsideRootError, resolve_within_root
@@ -35,6 +37,16 @@ def test_absolute_path_outside_root_is_refused(sample_repo, evil):
     """Absolute paths are refused outright."""
     with pytest.raises(PathOutsideRootError):
         resolve_within_root(sample_repo, evil)
+
+
+def test_an_absolute_path_is_refused_even_inside_the_root(sample_repo):
+    """The one case only the absolute-path check catches: the ancestry check
+    alone would accept it, since the path really is inside the root. Refused
+    anyway, so a client never learns the server's real location by trying it."""
+    inside = str(Path(sample_repo).resolve() / "src" / "auth.py")
+    with pytest.raises(PathOutsideRootError) as refused:
+        resolve_within_root(sample_repo, inside)
+    assert refused.value.reason == "absolute paths are not allowed"
 
 
 def test_symlink_escape_is_refused(tmp_path):

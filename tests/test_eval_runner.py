@@ -30,6 +30,11 @@ ev = load_run_eval()
     ("ANSWER: *****r2", "*****r2"),
     ("ANSWER: \"amount below minimum of $0.50\"", "amount below minimum of $0.50"),
     ("first guess\nANSWER: 3\nactually\nANSWER: 2", "2"),        # the last ANSWER line wins
+    # A full stop after the markup is formatting too, as is one inside it.
+    ("ANSWER: `src/auth.py`.", "src/auth.py"),
+    ("ANSWER: \"alice\".", "alice"),
+    ("ANSWER: **2**.", "2"),
+    ("ANSWER: **`2.`**", "2"),
 ])
 def test_grader_accepts_the_right_value_in_any_formatting(reply, expected):
     ok, _ = ev.grade(expected, reply)
@@ -43,6 +48,7 @@ def test_grader_accepts_the_right_value_in_any_formatting(reply, expected):
     ("ANSWER: src/auth.py and src/utils.py", "src/auth.py"),
     ("ANSWER: *****r2", "token::bob::*****r2"),
     ("ANSWER: Truee", "True"),
+    ("ANSWER: `src/auth.py`..", "src/auth.py"),                    # an ellipsis is not a full stop
 ])
 def test_grader_rejects_answers_a_substring_check_would_pass(reply, expected):
     ok, _ = ev.grade(expected, reply)

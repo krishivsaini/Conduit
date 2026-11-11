@@ -178,12 +178,14 @@ def normalize(value: str) -> str:
     changed = True
     while changed:
         changed = False
+        # The full stop can sit outside the markup (`src/auth.py`. or **2**.)
+        # or inside it, so it is stripped on every pass, not once at the end.
+        if v.endswith(".") and not v.endswith(".."):
+            v, changed = v[:-1].rstrip(), True
         for mark in _PAIRED:
             n = len(mark)
             if len(v) > 2 * n and v.startswith(mark) and v.endswith(mark):
                 v, changed = v[n:-n].strip(), True
-    if v.endswith(".") and not v.endswith(".."):
-        v = v[:-1].rstrip()
     return v.casefold()
 
 
