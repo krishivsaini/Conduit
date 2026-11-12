@@ -18,10 +18,11 @@ a test that tries to break them. A model-agnostic assistant discovers those
 tools at runtime and uses them to answer questions about the code, on Gemini,
 Groq or a fully local model.
 
-https://github.com/user-attachments/assets/158b682b-d740-428a-8b23-3409ed3528c9
+https://github.com/user-attachments/assets/16858c4d-3768-44f5-8a38-1f3cee3a5032
 
-*21 seconds: a tool added to the server and called by an unmodified client, the
-same CLI on Gemini and on a local model, and the deny-list refusing `.env`.*
+*34 seconds: the same model with and without the server, tools discovered at
+runtime, the CLI refusing `.env` and `service.key`, the eval scores, a poisoned
+README that fails to leak a secret, and the bugs found by trying to break it.*
 
 ## At a glance
 
